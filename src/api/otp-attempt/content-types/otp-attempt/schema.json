@@ -1,0 +1,42 @@
+{
+  "kind": "collectionType",
+  "collectionName": "otp_attempts",
+  "info": {
+    "singularName": "otp-attempt",
+    "pluralName": "otp-attempts",
+    "displayName": "OTP Attempt",
+    "description": "Rate limiting records for phone verification requests"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "phone": {
+      "type": "string",
+      "required": true
+    },
+    "action": {
+      "type": "enumeration",
+      "enum": [
+        "send",
+        "verify"
+      ],
+      "required": true
+    },
+    "successful": {
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "type": "string"
+    }
+  }
+}

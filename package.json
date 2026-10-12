@@ -1,0 +1,37 @@
+{
+  "name": "loyalty-program",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Loyalty Circle Strapi backend",
+  "scripts": {
+    "develop": "strapi develop",
+    "start": "strapi start",
+    "build": "strapi build",
+    "strapi": "strapi"
+  },
+  "devDependencies": {
+    "webpack": "^5.88.1"
+  },
+  "dependencies": {
+    "@strapi/plugin-i18n": "4.14.6",
+    "@strapi/plugin-users-permissions": "4.14.6",
+    "@strapi/strapi": "4.14.6",
+    "@twilio/voice-sdk": "^2.15.0",
+    "aws-sdk": "^2.1693.0",
+    "fast-csv": "^5.0.5",
+    "pg": "^8.16.3",
+    "qrcode": "^1.5.4",
+    "twilio": "^5.9.0"
+  },
+  "author": {
+    "name": "A Strapi developer"
+  },
+  "strapi": {
+    "uuid": "673ffe70-786e-419a-b615-ae4997c8e6c0"
+  },
+  "engines": {
+    "node": ">=16.0.0 <=20.x.x",
+    "npm": ">=6.0.0"
+  },
+  "license": "MIT"
+}

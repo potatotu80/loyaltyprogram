@@ -1,0 +1,166 @@
+{
+  "kind": "collectionType",
+  "collectionName": "app_users",
+  "info": {
+    "singularName": "app-user",
+    "pluralName": "app-users",
+    "displayName": "User",
+    "description": "Application users that own contacts"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "email": {
+      "type": "email",
+      "required": true
+    },
+    "phone": {
+      "type": "string"
+    },
+    "phoneVerified": {
+      "type": "boolean",
+      "default": false
+    },
+    "tenant": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::tenant.tenant"
+    },
+    "full_name": {
+      "type": "string"
+    },
+    "user_id": {
+      "type": "string"
+    },
+    "gender": {
+      "type": "string"
+    },
+    "birthday": {
+      "type": "date"
+    },
+    "occupation": {
+      "type": "string"
+    },
+    "paynow_id_type": {
+      "type": "string"
+    },
+    "paynow_id_value": {
+      "type": "string"
+    },
+    "paynow_name": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "text"
+    },
+    "tenant_admin_id": {
+      "type": "integer"
+    },
+    "tenant_admin_email": {
+      "type": "email"
+    },
+    "launch_qr_token": {
+      "type": "string"
+    },
+    "device_id": {
+      "type": "string",
+      "required": true
+    },
+    "device_manufacturer": {
+      "type": "string"
+    },
+    "device_brand": {
+      "type": "string"
+    },
+    "device_model": {
+      "type": "string"
+    },
+    "device_name": {
+      "type": "string"
+    },
+    "android_version": {
+      "type": "string"
+    },
+    "android_sdk_int": {
+      "type": "integer"
+    },
+    "app_version": {
+      "type": "string"
+    },
+    "tenant_admin_name": {
+      "type": "string"
+    }
+  },
+  "config": {
+    "settings": {
+      "bulkable": true,
+      "filterable": true,
+      "pageSize": 10,
+      "searchable": true,
+      "mainField": "email",
+      "defaultSortBy": "id",
+      "defaultSortOrder": "ASC"
+    },
+    "layouts": {
+      "list": [
+        "email",
+        "device_id",
+        "phone",
+        "tenant",
+        "tenant_admin_name"
+      ]
+    },
+    "metadatas": {
+      "email": {
+        "list": {
+          "label": "Email",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Email"
+        }
+      },
+      "device_id": {
+        "list": {
+          "label": "Device ID",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Device ID"
+        }
+      },
+      "phone": {
+        "list": {
+          "label": "Phone",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Phone"
+        }
+      },
+      "tenant": {
+        "list": {
+          "label": "Tenant"
+        },
+        "edit": {
+          "label": "Tenant",
+          "mainField": "name"
+        }
+      },
+      "tenant_admin_name": {
+        "list": {
+          "label": "Tenant Admin Name",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Tenant Admin Name"
+        }
+      }
+    }
+  }
+}

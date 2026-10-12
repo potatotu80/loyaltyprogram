@@ -1,0 +1,125 @@
+{
+  "kind": "collectionType",
+  "collectionName": "tenants",
+  "info": {
+    "singularName": "tenant",
+    "pluralName": "tenants",
+    "displayName": "Tenant",
+    "description": "White-label tenant configuration"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "slug": {
+      "type": "uid",
+      "targetField": "name",
+      "required": true,
+      "unique": true
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "app_api_key": {
+      "type": "string",
+      "required": true,
+      "unique": true,
+      "pluginOptions": {
+        "content-manager": {
+          "visible": false
+        }
+      }
+    },
+    "app_display_name": {
+      "type": "string"
+    },
+    "android_application_id": {
+      "type": "string"
+    },
+    "android_deep_link_scheme": {
+      "type": "string"
+    },
+    "android_apk": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "files"
+      ]
+    },
+    "android_apk_url": {
+      "type": "string"
+    },
+    "qr_code_url": {
+      "type": "string"
+    },
+    "brand_logo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "brand_logo_text": {
+      "type": "string"
+    },
+    "primary_color": {
+      "type": "string"
+    },
+    "support_email": {
+      "type": "email"
+    }
+  },
+  "config": {
+    "settings": {
+      "bulkable": true,
+      "filterable": true,
+      "pageSize": 10,
+      "searchable": true,
+      "mainField": "name",
+      "defaultSortBy": "id",
+      "defaultSortOrder": "ASC"
+    },
+    "metadatas": {
+      "name": {
+        "list": {
+          "label": "Name",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Name"
+        }
+      },
+      "slug": {
+        "list": {
+          "label": "Slug",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Slug"
+        }
+      },
+      "status": {
+        "list": {
+          "label": "Status",
+          "searchable": false,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Status"
+        }
+      }
+    }
+  }
+}

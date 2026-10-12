@@ -1,0 +1,46 @@
+{
+  "kind": "singleType",
+  "collectionName": "shared_apps",
+  "info": {
+    "singularName": "shared-app",
+    "pluralName": "shared-apps",
+    "displayName": "Shared App",
+    "description": "Unified Android app distribution settings"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "android_apk": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "files"
+      ]
+    },
+    "android_apk_url": {
+      "type": "string"
+    },
+    "android_latest_version_code": {
+      "type": "integer"
+    },
+    "android_latest_version_name": {
+      "type": "string"
+    },
+    "android_force_update": {
+      "type": "boolean",
+      "default": false
+    },
+    "notes": {
+      "type": "text"
+    },
+    "enable_twilio_voice_panel": {
+      "type": "boolean",
+      "default": true
+    },
+    "enable_tenant_admin_contact_export": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

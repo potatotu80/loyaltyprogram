@@ -1,0 +1,48 @@
+{
+  "kind": "collectionType",
+  "collectionName": "admin_leaders",
+  "info": {
+    "singularName": "admin-leader",
+    "pluralName": "admin-leaders",
+    "displayName": "Admin Leader",
+    "description": "Scopes a Strapi admin account to the Tenant Admins they manage"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "config": {
+    "settings": {
+      "bulkable": false,
+      "filterable": true,
+      "pageSize": 10,
+      "searchable": true,
+      "mainField": "name",
+      "defaultSortBy": "id",
+      "defaultSortOrder": "DESC"
+    },
+    "layouts": {
+      "list": ["name", "admin_email"]
+    },
+    "metadatas": {
+      "name": {
+        "list": { "label": "Leader Name", "searchable": true, "sortable": true },
+        "edit": { "label": "Leader Name" }
+      },
+      "admin_email": {
+        "list": { "label": "Admin Email", "searchable": true, "sortable": true },
+        "edit": { "label": "Admin Email" }
+      }
+    }
+  },
+  "attributes": {
+    "name": { "type": "string", "required": true },
+    "admin_user_id": { "type": "integer", "unique": true },
+    "admin_email": { "type": "email", "required": true, "unique": true },
+    "tenant_admins": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::tenant-admin.tenant-admin",
+      "mappedBy": "admin_leader"
+    }
+  }
+}

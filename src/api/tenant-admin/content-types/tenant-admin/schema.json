@@ -1,0 +1,116 @@
+{
+  "kind": "collectionType",
+  "collectionName": "tenant_admins",
+  "info": {
+    "singularName": "tenant-admin",
+    "pluralName": "tenant-admins",
+    "displayName": "Tenant Admin",
+    "description": "Assigns a Strapi admin user to one tenant; the same admin can manage multiple tenants through separate records"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "config": {
+    "settings": {
+      "bulkable": true,
+      "filterable": true,
+      "pageSize": 10,
+      "searchable": true,
+      "mainField": "tenant_name",
+      "defaultSortBy": "tenant_name",
+      "defaultSortOrder": "ASC"
+    },
+    "layouts": {
+      "list": [
+        "tenant_name",
+        "tenant",
+        "admin_email",
+        "qr_code_url"
+      ]
+    },
+    "metadatas": {
+      "tenant_name": {
+        "list": {
+          "label": "Tenant Name",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Tenant Name"
+        }
+      },
+      "tenant": {
+        "list": {
+          "label": "Linked Tenant"
+        },
+        "edit": {
+          "label": "Linked Tenant",
+          "mainField": "name"
+        }
+      },
+      "admin_email": {
+        "list": {
+          "label": "Admin Email",
+          "searchable": true,
+          "sortable": true
+        },
+        "edit": {
+          "label": "Admin Email"
+        }
+      },
+      "qr_code_url": {
+        "list": {
+          "label": "QR URL",
+          "searchable": false,
+          "sortable": false
+        },
+        "edit": {
+          "label": "QR URL"
+        }
+      },
+      "qr_token": {
+        "edit": {
+          "label": "QR Token"
+        }
+      }
+    }
+  },
+  "attributes": {
+    "admin_user_id": {
+      "type": "integer"
+    },
+    "admin_email": {
+      "type": "email",
+      "required": true
+    },
+    "tenant_name": {
+      "type": "string"
+    },
+    "qr_token": {
+      "type": "string",
+      "unique": true
+    },
+    "qr_code_url": {
+      "type": "string"
+    },
+    "role": {
+      "type": "enumeration",
+      "enum": [
+        "tenant_admin"
+      ],
+      "default": "tenant_admin"
+    },
+    "admin_leader": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::admin-leader.admin-leader",
+      "inversedBy": "tenant_admins"
+    },
+    "tenant": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::tenant.tenant",
+      "required": true
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+    "kind":  "collectionType",
+    "collectionName":  "contacts",
+    "info":  {
+                 "singularName":  "contact",
+                 "pluralName":  "contacts",
+                 "displayName":  "Contact",
+                 "description":  "Contacts related to an application user"
+             },
+    "options":  {
+                    "draftAndPublish":  false
+                },
+    "attributes":  {
+                       "name":  {
+                                    "type":  "string",
+                                    "required":  true
+                                },
+                       "phone":  {
+                                     "type":  "string",
+                                     "required":  true
+                                 },
+                       "email":  {
+                                     "type":  "email"
+                                 },
+                       "user_email":  {
+                                          "type":  "string"
+                                      },
+                       "user_phone":  {
+                                          "type":  "string"
+                                      },
+                       "user":  {
+                                    "type":  "relation",
+                                    "relation":  "manyToOne",
+                                    "target":  "api::app-user.app-user",
+                                    "required":  true
+                                },
+                       "tenant":  {
+                                      "type":  "relation",
+                                      "relation":  "manyToOne",
+                                      "target":  "api::tenant.tenant"
+                                  },
+                       "tenant_admin_name":  {
+                                                 "type":  "string"
+                                             }
+                   }
+}
