@@ -17,6 +17,7 @@ const getObjectStorageConfig = () => {
   const publicBaseUrl = trimTrailingSlashes(process.env.R2_PUBLIC_BASE_URL || '');
   const accessKeyId = String(process.env.R2_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || '').trim();
   const secretAccessKey = String(process.env.R2_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || '').trim();
+  const prefixBase = String(process.env.S3_IMAGES_PREFIX || 'users').trim() || 'users';
   const provider = endpoint ? 'r2' : 's3';
 
   return {
@@ -26,6 +27,7 @@ const getObjectStorageConfig = () => {
     publicBaseUrl,
     accessKeyId,
     secretAccessKey,
+    prefixBase,
     provider,
   };
 };
