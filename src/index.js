@@ -1598,8 +1598,25 @@ const buildTenantAdminReferralCode = ({ tenantCode, tenantAdminName }) => {
   return `${normalizedTenantCode}${normalizedTenantAdminName}`;
 };
 
-const buildTenantDeepLinkUrl = ({ tenantCode, referralCode, qrToken }) => {
-  const scheme = getSharedDeepLinkScheme();
+const getTenantDeepLinkScheme = (tenant) => {
+  const configuredScheme = String(tenant?.android_deep_link_scheme || '').trim();
+  if (!configuredScheme) {
+    return getSharedDeepLinkScheme();
+  }
+
+  return configuredScheme
+    .toLowerCase()
+    .replace(/[^a-z0-9+.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || getSharedDeepLinkScheme();
+};
+
+const getTenantAndroidApplicationId = (tenant) =>
+  String(tenant?.android_application_id || '').trim()
+  || getSharedAndroidApplicationId();
+
+const buildTenantDeepLinkUrl = ({ tenant, tenantCode, referralCode, qrToken }) => {
+  const scheme = getTenantDeepLinkScheme(tenant);
   if (!scheme) {
     return '';
   }
@@ -1619,9 +1636,9 @@ const buildTenantDeepLinkUrl = ({ tenantCode, referralCode, qrToken }) => {
   return `${scheme}://open${query ? `?${query}` : ''}`;
 };
 
-const buildTenantIntentUrl = ({ tenantCode, referralCode, qrToken }) => {
-  const scheme = getSharedDeepLinkScheme();
-  const packageName = getSharedAndroidApplicationId();
+const buildTenantIntentUrl = ({ tenant, tenantCode, referralCode, qrToken }) => {
+  const scheme = getTenantDeepLinkScheme(tenant);
+  const packageName = getTenantAndroidApplicationId(tenant);
   if (!scheme || !packageName) {
     return '';
   }
@@ -1648,8 +1665,8 @@ const renderQrLandingHtml = ({ tenant, tenantCode, referralCode, qrCodeUrl, qrTo
     : '#2F6BFF';
   const resolvedReferralCode = String(referralCode || '').trim();
   const installUrl = ensureAbsoluteUrl(tenant?.android_apk_url);
-  const deepLinkUrl = buildTenantDeepLinkUrl({ tenantCode, referralCode: resolvedReferralCode, qrToken });
-  const intentUrl = buildTenantIntentUrl({ tenantCode, referralCode: resolvedReferralCode, qrToken });
+  const deepLinkUrl = buildTenantDeepLinkUrl({ tenant, tenantCode, referralCode: resolvedReferralCode, qrToken });
+  const intentUrl = buildTenantIntentUrl({ tenant, tenantCode, referralCode: resolvedReferralCode, qrToken });
   const safeMessage = escapeHtml('Please open this link on an Android device.');
 
   return `<!doctype html>
@@ -2874,8 +2891,8 @@ module.exports = {
               appDisplayName: tenant.app_display_name || tenant.name,
               primaryColor: tenant.primary_color || null,
               supportEmail: tenant.support_email || null,
-              deepLinkScheme: getSharedDeepLinkScheme(),
-              androidApplicationId: getSharedAndroidApplicationId(),
+              deepLinkScheme: getTenantDeepLinkScheme(tenant),
+              androidApplicationId: getTenantAndroidApplicationId(tenant),
               androidApkUrl,
               latestVersionCode,
               latestVersionName,
