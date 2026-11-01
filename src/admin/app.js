@@ -9,6 +9,7 @@ import { Device } from '@twilio/voice-sdk';
 const APP_USER_UID = 'api::app-user.app-user';
 const CONTACT_UID = 'api::contact.contact';
 const TENANT_UID = 'api::tenant.tenant';
+const ADMIN_LEADER_UID = 'api::admin-leader.admin-leader';
 const TENANT_ADMIN_UID = 'api::tenant-admin.tenant-admin';
 const SHARED_APP_UID = 'api::shared-app.shared-app';
 const S3_BUCKET = process.env.STRAPI_ADMIN_R2_BUCKET || process.env.STRAPI_ADMIN_S3_BUCKET || 'yengtesting';
@@ -2723,12 +2724,16 @@ const hideTenantAdminNavigation = () => {
     const text = String(node.textContent || '').trim().toLowerCase();
     const href = rawHref.toLowerCase();
     const isSettingsLink = href === '/admin/settings' || href.startsWith('/admin/settings/');
+    const isAdminLeaderLink =
+      text === 'admin leader' ||
+      rawHref === `/admin/content-manager/collectionType/${ADMIN_LEADER_UID}` ||
+      rawHref.startsWith(`/admin/content-manager/collectionType/${ADMIN_LEADER_UID}?`);
 
-    if (!isSettingsLink) {
+    if (!isSettingsLink && !isAdminLeaderLink) {
       return;
     }
 
-    const navItem = node.closest('a, button, li, [role="menuitem"], [role="treeitem"], [role="listitem"], div');
+    const navItem = node.closest('a, button, li, [role="menuitem"], [role="treeitem"], [role="listitem"]');
     if (navItem instanceof HTMLElement) {
       navItem.style.display = 'none';
     }
