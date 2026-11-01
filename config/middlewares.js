@@ -4,7 +4,10 @@ const parseOrigins = (value) =>
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-const productionOrigins = ['https://cmsportal.yengsang.com', 'https://api.yengsang.com'];
+const productionOrigins = [
+  'https://admin.loyaltycircle.win',
+  'https://api.loyaltycircle.win',
+];
 const localOrigins = [
   'http://localhost:1337',
   'http://127.0.0.1:1337',
