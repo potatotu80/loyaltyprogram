@@ -2787,6 +2787,8 @@ module.exports = {
               'status',
               'app_display_name',
               'primary_color',
+              'android_application_id',
+              'android_deep_link_scheme',
               'android_apk_url',
               'qr_code_url',
             ],
