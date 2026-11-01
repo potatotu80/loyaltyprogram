@@ -29,6 +29,7 @@ const {
   findTenantLaunchByQrToken,
   getAdminTenantContext,
   getTenantIdsFilter,
+  isAdminLeaderRole,
   parsePositiveInt,
 } = require('./utils/tenant-access');
 const TENANT_ADMIN_BULK_SENTINEL = '__tenant_admin_bulk__:';
@@ -1127,6 +1128,55 @@ const attachTenantAdminPermissionExpansion = (strapi) => {
   }
 
   controller.__tenantPermissionWrapped = true;
+};
+
+const ensureAdminLeaderTenantAdminReadPermission = async (strapi) => {
+  const adminLeaderRoles = (await strapi.entityService.findMany('admin::role', {
+    fields: ['id', 'name', 'code'],
+    limit: 1000,
+  })).filter(isAdminLeaderRole);
+
+  if (!adminLeaderRoles.length) {
+    return;
+  }
+
+  const action = 'plugin::content-manager.explorer.read';
+  const fields = Object.keys(strapi.getModel(APP_TENANT_ADMIN_UID)?.attributes || {});
+  let createdCount = 0;
+
+  for (const role of adminLeaderRoles) {
+    const existingPermission = await strapi.db.query('admin::permission').findOne({
+      where: {
+        action,
+        subject: APP_TENANT_ADMIN_UID,
+        role: {
+          id: role.id,
+        },
+      },
+      select: ['id'],
+    });
+
+    if (existingPermission) {
+      continue;
+    }
+
+    await strapi.db.query('admin::permission').create({
+      data: {
+        action,
+        subject: APP_TENANT_ADMIN_UID,
+        properties: { fields },
+        conditions: [],
+        role: role.id,
+      },
+    });
+    createdCount += 1;
+  }
+
+  if (createdCount) {
+    strapi.log.info(
+      `[admin-leader][permissions] granted Tenant Admin read permissions=${createdCount}`
+    );
+  }
 };
 
 const syncTenantAdminListConfiguration = async (strapi) => {
@@ -3462,6 +3512,7 @@ module.exports = {
    * run jobs, or perform some special logic.
    */
   async bootstrap({ strapi }) {
+    await ensureAdminLeaderTenantAdminReadPermission(strapi);
     await syncTenantAdminListConfiguration(strapi);
     await syncAppUserListConfiguration(strapi);
     await syncContactListConfiguration(strapi);
