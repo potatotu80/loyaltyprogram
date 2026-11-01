@@ -2725,9 +2725,8 @@ const hideTenantAdminNavigation = () => {
     const href = rawHref.toLowerCase();
     const isSettingsLink = href === '/admin/settings' || href.startsWith('/admin/settings/');
     const isAdminLeaderLink =
-      text === 'admin leader' ||
-      rawHref === `/admin/content-manager/collectionType/${ADMIN_LEADER_UID}` ||
-      rawHref.startsWith(`/admin/content-manager/collectionType/${ADMIN_LEADER_UID}?`);
+      text.includes('admin leader') ||
+      rawHref.includes(ADMIN_LEADER_UID);
 
     if (!isSettingsLink && !isAdminLeaderLink) {
       return;
