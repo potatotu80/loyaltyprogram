@@ -990,6 +990,7 @@ const attachTenantAdminPermissionExpansion = (strapi) => {
       SHARED_APP_UID,
       'plugin::upload.file',
       'plugin::upload.folder',
+      ...(tenantContext.isTenantAdmin ? [APP_ADMIN_LEADER_UID] : []),
     ]);
     const hiddenActionPrefixes = ['plugin::upload.'];
     const readOnlySubjects = new Set([
@@ -2660,6 +2661,10 @@ module.exports = {
       const tenantContext = await getAdminTenantContext(strapi, adminUser);
       if (tenantContext.isSuperAdmin) {
         return next();
+      }
+
+      if (slug === APP_ADMIN_LEADER_UID && tenantContext.isTenantAdmin) {
+        return ctx.forbidden('Tenant Admin users cannot access Admin Leader records.');
       }
 
       if (!tenantContext.tenantIds.length) {
