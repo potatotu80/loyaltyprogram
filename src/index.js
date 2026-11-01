@@ -2117,27 +2117,28 @@ const sanitizeCsvCell = (value) => {
   return String(value).replace(/\r?\n/g, ' ').trim();
 };
 
-const buildContactExportFilename = ({ isTenantAdminScoped }) => {
+const buildContactExportFilename = ({ isScopedExport, isAdminLeader }) => {
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
   const time = now
     .toTimeString()
     .slice(0, 8)
     .replace(/:/g, '-');
-  return isTenantAdminScoped
+  if (isAdminLeader) {
+    return `contacts-export-admin-leader-${date}_${time}.csv`;
+  }
+
+  return isScopedExport
     ? `contacts-export-tenant-admin-${date}_${time}.csv`
     : `contacts-export-${date}_${time}.csv`;
 };
 
 const streamContactsCsvExport = async ({ ctx, strapi, adminUser, tenantContext }) => {
   const sharedApp = await findSharedAppConfig(strapi);
-  const isTenantAdminScoped = !tenantContext.isSuperAdmin && tenantContext.tenantIds.length > 0;
+  const isScopedExport = !tenantContext.isSuperAdmin && tenantContext.tenantIds.length > 0;
+  const isTenantAdminExport = isScopedExport && !tenantContext.isAdminLeader;
 
-  if (tenantContext.isAdminLeader) {
-    return ctx.forbidden('Admin Leader users cannot export contacts.');
-  }
-
-  if (isTenantAdminScoped && sharedApp?.enable_tenant_admin_contact_export === false) {
+  if (isTenantAdminExport && sharedApp?.enable_tenant_admin_contact_export === false) {
     return ctx.forbidden('Contact export is disabled for Tenant Admin users.');
   }
 
@@ -2165,7 +2166,7 @@ const streamContactsCsvExport = async ({ ctx, strapi, adminUser, tenantContext }
       ? permissionQuery.filters
       : null;
 
-  if (isTenantAdminScoped) {
+  if (isScopedExport) {
     const scopedFilter = getScopedContactFilter(tenantContext);
     mergedFilters = mergedFilters
       ? { $and: [mergedFilters, scopedFilter] }
@@ -2180,7 +2181,10 @@ const streamContactsCsvExport = async ({ ctx, strapi, adminUser, tenantContext }
   }
 
   const sort = permissionQuery.sort || ['id:desc'];
-  const filename = buildContactExportFilename({ isTenantAdminScoped });
+  const filename = buildContactExportFilename({
+    isScopedExport,
+    isAdminLeader: tenantContext.isAdminLeader,
+  });
   const csvStream = formatCsv({ headers: true, writeBOM: true });
 
   ctx.set('Content-Type', 'text/csv; charset=utf-8');
@@ -2247,7 +2251,8 @@ const streamContactsCsvExport = async ({ ctx, strapi, adminUser, tenantContext }
     }
 
     strapi.log.info(
-      `[contact-export] adminUser=${adminUser.id} isSuperAdmin=${tenantContext.isSuperAdmin} selectedIds=${selectedIds.length} exported=${exportedCount}`
+      `[contact-export] adminUser=${adminUser.id} isSuperAdmin=${tenantContext.isSuperAdmin}` +
+      ` isAdminLeader=${tenantContext.isAdminLeader} selectedIds=${selectedIds.length} exported=${exportedCount}`
     );
   } catch (error) {
     strapi.log.error(
@@ -3043,9 +3048,9 @@ module.exports = {
                   canManageTenantAdmins: tenantContext.isSuperAdmin || tenantContext.isAdminLeader === true,
                   canDeleteManagedRecords: tenantContext.isSuperAdmin,
                   canExportContacts:
-                    !tenantContext.isAdminLeader &&
-                    (tenantContext.isSuperAdmin ||
-                      sharedApp?.enable_tenant_admin_contact_export !== false),
+                    tenantContext.isAdminLeader ||
+                    tenantContext.isSuperAdmin ||
+                    sharedApp?.enable_tenant_admin_contact_export !== false,
                   tenantAdminRecordId,
                 },
               };
