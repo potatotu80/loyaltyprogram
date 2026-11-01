@@ -35,6 +35,30 @@ const {
 const TENANT_ADMIN_BULK_SENTINEL = '__tenant_admin_bulk__:';
 const SHARED_APP_UID = 'api::shared-app.shared-app';
 
+const parseCorsOrigins = (value) => String(value || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const scopedAdminCorsOrigins = new Set(
+  parseCorsOrigins(process.env.CORS_ORIGIN).length
+    ? parseCorsOrigins(process.env.CORS_ORIGIN)
+    : ['https://admin.loyaltycircle.win', 'https://api.loyaltycircle.win']
+);
+
+// This middleware can return a scoped response before Strapi's CORS middleware.
+// Preserve the same origin restrictions for those early responses.
+const applyScopedAdminCorsHeaders = (ctx) => {
+  const origin = String(ctx.get('origin') || '').trim();
+  if (!origin || !scopedAdminCorsOrigins.has(origin)) {
+    return;
+  }
+
+  ctx.vary('Origin');
+  ctx.set('Access-Control-Allow-Origin', origin);
+  ctx.set('Access-Control-Allow-Credentials', 'true');
+};
+
 const deleteUserObjectStoragePrefix = async (tenant, userId) => {
   const storageConfig = getObjectStorageConfig();
   const bucket = storageConfig.bucket;
@@ -2491,6 +2515,8 @@ module.exports = {
       if (!adminUser?.id) {
         return next();
       }
+
+      applyScopedAdminCorsHeaders(ctx);
 
       const relationRequest = getContentManagerRelationParams(ctx.request.path || '');
       if (ctx.method === 'GET' && relationRequest?.targetField === 'tenant') {
