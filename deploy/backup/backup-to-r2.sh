@@ -2,9 +2,11 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/var/www/contact}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Default to this repository, so cron never falls back to the previous product path.
+APP_DIR="${APP_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
-BACKUP_LOCAL_DIR="${BACKUP_LOCAL_DIR:-/var/backups/contact}"
+BACKUP_LOCAL_DIR="${BACKUP_LOCAL_DIR:-/var/backups/loyalty-program}"
 BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
 BACKUP_KEEP_LOCAL="${BACKUP_KEEP_LOCAL:-false}"
 BACKUP_DB_PREFIX="${BACKUP_DB_PREFIX:-db-backups}"
@@ -149,8 +151,8 @@ main() {
   timestamp="$(date '+%Y-%m-%d-%H%M%S')"
 
   local db_backup_file media_backup_file
-  db_backup_file="$BACKUP_LOCAL_DIR/contact-db-${timestamp}.sql.gz"
-  media_backup_file="$BACKUP_LOCAL_DIR/contact-media-${timestamp}.tar.gz"
+  db_backup_file="$BACKUP_LOCAL_DIR/loyalty-program-db-${timestamp}.sql.gz"
+  media_backup_file="$BACKUP_LOCAL_DIR/loyalty-program-media-${timestamp}.tar.gz"
 
   local uploads_dir
   uploads_dir="$APP_DIR/public/uploads"
