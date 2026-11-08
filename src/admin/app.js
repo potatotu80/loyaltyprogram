@@ -2948,15 +2948,8 @@ const installFirstLoginPasswordChangeGuard = () => {
           return;
         }
 
-        try {
-          const noticeKey = 'firstLoginPasswordChangeNoticeShown';
-          if (!window.sessionStorage.getItem(noticeKey)) {
-            window.sessionStorage.setItem(noticeKey, '1');
-            window.alert('Change your temporary password before accessing the Loyalty Program administration area.');
-          }
-        } catch (_error) {
-          // The backend still enforces the password change if storage is unavailable.
-        }
+        // Do not use window.alert here. Native alerts pause the Admin app and
+        // can leave the profile route visibly stuck on its loading indicator.
       })
       .catch(() => {
         // Login is an SPA transition. Retry while its token and API state settle.
