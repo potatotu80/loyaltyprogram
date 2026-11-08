@@ -2790,8 +2790,13 @@ const getAdminAuthorizationHeader = () => {
   }
 };
 
+const getAdminBackendUrl = (path) => {
+  const backendUrl = String(window.strapi?.backendURL || '').replace(/\/+$/, '');
+  return backendUrl ? `${backendUrl}${path}` : path;
+};
+
 const fetchTenantAdminCapabilities = async () => {
-  const response = await fetch(TENANT_ADMIN_CAPABILITIES_PATH, {
+  const response = await fetch(getAdminBackendUrl(TENANT_ADMIN_CAPABILITIES_PATH), {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
