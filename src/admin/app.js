@@ -2780,6 +2780,7 @@ const TENANT_ADMIN_TARGET_PATH_KEY = 'tenantAdminTargetPath';
 const ADMIN_ME_API_PATH = '/admin/users/me';
 const ADMIN_LOGIN_PATH = '/admin/auth/login';
 const ADMIN_LOGOUT_PATH = '/admin/logout';
+const FORCE_PASSWORD_CHANGE_NOTICE_ID = 'force-password-change-notice';
 
 const getAdminAuthorizationHeader = () => {
   try {
@@ -2793,6 +2794,37 @@ const getAdminAuthorizationHeader = () => {
 const getAdminBackendUrl = (path) => {
   const backendUrl = String(window.strapi?.backendURL || '').replace(/\/+$/, '');
   return backendUrl ? `${backendUrl}${path}` : path;
+};
+
+const showForcedPasswordChangeNotice = () => {
+  if (document.getElementById(FORCE_PASSWORD_CHANGE_NOTICE_ID)) {
+    return;
+  }
+
+  const notice = document.createElement('div');
+  notice.id = FORCE_PASSWORD_CHANGE_NOTICE_ID;
+  notice.setAttribute('role', 'alert');
+  notice.style.cssText = [
+    'position: fixed',
+    'top: 18px',
+    'left: 50%',
+    'transform: translateX(-50%)',
+    'z-index: 10000',
+    'width: min(640px, calc(100vw - 32px))',
+    'padding: 16px 20px',
+    'border: 1px solid #d02b20',
+    'border-radius: 8px',
+    'background: #fff1f0',
+    'box-shadow: 0 8px 24px rgba(45, 45, 65, 0.2)',
+    'color: #45120f',
+    'font-family: sans-serif',
+    'font-size: 14px',
+    'line-height: 1.5',
+  ].join(';');
+  notice.innerHTML =
+    '<strong>Temporary password must be changed</strong><br>' +
+    'Use the Password section below: enter your current temporary password, choose a new password, confirm it, then select Save.';
+  document.body.appendChild(notice);
 };
 
 const fetchTenantAdminCapabilities = async () => {
@@ -2954,6 +2986,8 @@ const installFirstLoginPasswordChangeGuard = () => {
           window.location.replace(`${profilePath}?forcePasswordChange=1`);
           return;
         }
+
+        showForcedPasswordChangeNotice();
 
       })
       .catch(() => {
