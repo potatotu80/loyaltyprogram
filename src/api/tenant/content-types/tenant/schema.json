@@ -77,6 +77,12 @@
     },
     "support_email": {
       "type": "email"
+    },
+    "admin_leaders": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::admin-leader.admin-leader",
+      "mappedBy": "tenants"
     }
   },
   "config": {

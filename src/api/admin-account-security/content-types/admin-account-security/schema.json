@@ -1,0 +1,37 @@
+{
+  "kind": "collectionType",
+  "collectionName": "admin_account_securities",
+  "info": {
+    "singularName": "admin-account-security",
+    "pluralName": "admin-account-securities",
+    "displayName": "Admin Account Security"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {
+    "content-manager": {
+      "visible": false
+    },
+    "content-type-builder": {
+      "visible": false
+    }
+  },
+  "attributes": {
+    "admin_user_id": {
+      "type": "integer",
+      "required": true,
+      "unique": true
+    },
+    "must_change_password": {
+      "type": "boolean",
+      "default": false
+    },
+    "temporary_password_issued_at": {
+      "type": "datetime"
+    },
+    "password_changed_at": {
+      "type": "datetime"
+    }
+  }
+}

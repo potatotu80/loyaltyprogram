@@ -343,10 +343,23 @@ const getAdminTenantContext = async (strapi, adminUser) => {
       ? await strapi.entityService.findMany(APP_ADMIN_LEADER_UID, {
           filters: ownershipFilter,
           fields: ['id', 'admin_user_id', 'admin_email', 'name'],
+          populate: {
+            tenants: {
+              fields: ['id', 'name', 'slug'],
+            },
+          },
           limit: 10,
         })
       : [];
     const adminLeaderIds = leaders.map((entry) => parsePositiveInt(entry.id)).filter(Boolean);
+    const directTenants = leaders.flatMap((entry) => (
+      Array.isArray(entry.tenants) ? entry.tenants : []
+    ));
+    const tenants = [...new Map(
+      directTenants
+        .filter((tenant) => parsePositiveInt(tenant?.id))
+        .map((tenant) => [tenant.id, tenant])
+    ).values()];
     const tenantAdmins = adminLeaderIds.length
       ? await strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
           filters: {
@@ -365,7 +378,6 @@ const getAdminTenantContext = async (strapi, adminUser) => {
           limit: 1000,
         })
       : [];
-    const tenants = tenantAdmins.map((entry) => entry.tenant).filter(Boolean);
 
     return {
       isAdmin: true,
@@ -373,7 +385,9 @@ const getAdminTenantContext = async (strapi, adminUser) => {
       isAdminLeader: true,
       isTenantAdmin: false,
       adminLeaderIds,
-      tenantIds: [...new Set(tenants.map((tenant) => tenant.id))],
+      // Admin Leader tenant access is explicit. Their managed Tenant Admin
+      // records only determine which team-owned Users and Contacts they see.
+      tenantIds: tenants.map((tenant) => tenant.id),
       tenantAdminIds: tenantAdmins.map((entry) => parsePositiveInt(entry.id)).filter(Boolean),
       tenantAdminEmails: [...new Set(tenantAdmins.map((entry) => String(entry.admin_email || '').trim().toLowerCase()).filter(Boolean))],
       tenantAdminNames: [...new Set(tenantAdmins.map((entry) => String(entry.tenant_name || '').trim()).filter(Boolean))],

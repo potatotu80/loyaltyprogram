@@ -1386,6 +1386,239 @@ const TenantAdminCreateTenantSelector = () => {
   );
 };
 
+const AdminLeaderCreateTenantSelector = () => {
+  const { slug, initialData, modifiedData } = useCMEditViewDataManager();
+  const { get, post } = useFetchClient();
+  const toggleNotification = useNotification();
+  const [options, setOptions] = useState([]);
+  const [selectedTenantIds, setSelectedTenantIds] = useState([]);
+  const [pendingTenantId, setPendingTenantId] = useState('');
+  const [newAccountPassword, setNewAccountPassword] = useState('');
+  const [confirmNewAccountPassword, setConfirmNewAccountPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mountNode, setMountNode] = useState(null);
+  const [actionMountNode, setActionMountNode] = useState(null);
+  const isCreatePage = slug === ADMIN_LEADER_UID && !initialData?.id;
+
+  useEffect(() => {
+    if (!isCreatePage) {
+      return undefined;
+    }
+
+    let isMounted = true;
+    const loadTenants = async () => {
+      try {
+        setIsLoading(true);
+        const response = await get('/admin-leader/available-tenants');
+        if (!isMounted) return;
+        const results = response?.data?.data || response?.data || [];
+        setOptions(results.map((tenant) => ({
+          id: tenant.id,
+          label: tenant.name || tenant.slug || String(tenant.id),
+        })));
+      } catch (_error) {
+        if (!isMounted) return;
+        toggleNotification({
+          type: 'warning',
+          message: 'Failed to load tenants for Admin Leader creation.',
+        });
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    loadTenants();
+    return () => {
+      isMounted = false;
+    };
+  }, [get, isCreatePage, toggleNotification]);
+
+  useEffect(() => {
+    if (!isCreatePage) {
+      setMountNode(null);
+      setActionMountNode(null);
+      return undefined;
+    }
+
+    let disposed = false;
+    let hostNode = null;
+    let actionHostNode = null;
+    let tenantContainer = null;
+    let restoreTenantDisplay = null;
+    const hiddenSaveButtons = [];
+
+    const attach = () => {
+      if (disposed) return;
+      tenantContainer = findFieldContainer('tenants') || findFieldContainerByLabel(['Linked Tenants', 'Tenants']);
+      if (tenantContainer?.parentElement) {
+        if (!hostNode) {
+          hostNode = document.createElement('div');
+          hostNode.dataset.adminLeaderTenantCreateHost = 'true';
+          hostNode.style.marginTop = '8px';
+        }
+        if (!hostNode.parentElement) {
+          tenantContainer.parentElement.insertBefore(hostNode, tenantContainer.nextSibling);
+        }
+        if (restoreTenantDisplay === null) restoreTenantDisplay = tenantContainer.style.display;
+        tenantContainer.style.display = 'none';
+        setMountNode(hostNode);
+      }
+
+      const nameContainer = findFieldContainer('name') || findFieldContainerByLabel(['Leader Name']);
+      if (nameContainer?.parentElement) {
+        const row = nameContainer.parentElement.parentElement || nameContainer.parentElement;
+        row.style.position = 'relative';
+        row.style.paddingRight = '200px';
+        if (!actionHostNode) {
+          actionHostNode = document.createElement('div');
+          actionHostNode.dataset.adminLeaderCreateActionHost = 'true';
+          actionHostNode.style.position = 'absolute';
+          actionHostNode.style.right = '16px';
+          actionHostNode.style.bottom = '0';
+        }
+        if (!actionHostNode.parentElement) row.appendChild(actionHostNode);
+        setActionMountNode(actionHostNode);
+      }
+
+      Array.from(document.querySelectorAll('button')).forEach((button) => {
+        if (String(button.textContent || '').trim() !== 'Save' || button.dataset.adminLeaderSaveHidden === 'true') {
+          return;
+        }
+        button.dataset.adminLeaderSaveHidden = 'true';
+        hiddenSaveButtons.push({ button, display: button.style.display });
+        button.style.display = 'none';
+      });
+    };
+
+    const timer = window.setInterval(attach, 500);
+    attach();
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      setMountNode(null);
+      setActionMountNode(null);
+      if (tenantContainer) tenantContainer.style.display = restoreTenantDisplay ?? '';
+      if (hostNode?.parentElement) hostNode.parentElement.removeChild(hostNode);
+      if (actionHostNode?.parentElement) actionHostNode.parentElement.removeChild(actionHostNode);
+      hiddenSaveButtons.forEach(({ button, display }) => {
+        button.style.display = display;
+        delete button.dataset.adminLeaderSaveHidden;
+      });
+    };
+  }, [isCreatePage]);
+
+  if (!isCreatePage) return null;
+
+  const selectedOptions = selectedTenantIds
+    .map((id) => options.find((tenant) => tenant.id === id))
+    .filter(Boolean);
+  const availableOptions = options.filter((tenant) => !selectedTenantIds.includes(tenant.id));
+
+  const addTenant = () => {
+    const tenantId = Number(pendingTenantId);
+    if (!Number.isInteger(tenantId) || tenantId <= 0 || selectedTenantIds.includes(tenantId)) return;
+    setSelectedTenantIds((current) => [...current, tenantId]);
+    setPendingTenantId('');
+  };
+
+  const submitCreate = async (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (isSubmitting) return;
+
+    const name = String(modifiedData?.name || '').trim();
+    const adminEmail = String(modifiedData?.admin_email || '').trim();
+    if (!name || !adminEmail) {
+      toggleNotification({ type: 'warning', message: 'Leader Name and Admin Email are required.' });
+      return;
+    }
+    if (!selectedTenantIds.length) {
+      toggleNotification({ type: 'warning', message: 'Please select at least one tenant.' });
+      return;
+    }
+    if (newAccountPassword !== confirmNewAccountPassword) {
+      toggleNotification({ type: 'warning', message: 'Temporary password and confirmation do not match.' });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await post('/admin-leader/create-with-account', {
+        name,
+        admin_email: adminEmail,
+        tenantIds: selectedTenantIds,
+        newAccountPassword: newAccountPassword || null,
+      });
+      toggleNotification({ type: 'success', message: 'Admin Leader created.' });
+      window.location.assign(buildCollectionTypeListUrl(ADMIN_LEADER_UID, {
+        page: '1',
+        pageSize: '10',
+        sort: 'id:DESC',
+      }));
+    } catch (error) {
+      toggleNotification({
+        type: 'warning',
+        message: error?.response?.data?.error?.message || error?.message || 'Failed to create Admin Leader.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const content = (
+    <Box background="neutral0" borderColor="neutral200" hasRadius padding={4} shadow="tableShadow">
+      <Flex direction="column" gap={3} alignItems="stretch">
+        <Typography variant="pi" textColor="neutral600">Linked Tenant Access</Typography>
+        <Typography variant="omega" textColor="neutral500">
+          The Leader can create and manage Tenant Admins only for selected tenants. User and Contact visibility remains limited to their assigned Tenant Admin team.
+        </Typography>
+        <Box>
+          <Typography variant="omega" textColor="neutral700" style={{ display: 'block', marginBottom: '6px' }}>
+            Temporary password for a new Admin Leader account
+          </Typography>
+          <input type="password" value={newAccountPassword} onChange={(event) => setNewAccountPassword(event.target.value)} disabled={isSubmitting} autoComplete="new-password" placeholder="Leave blank when the Admin Leader account already exists" style={{ width: '100%', minHeight: '40px', border: '1px solid #dcdce4', borderRadius: '4px', padding: '0 12px', background: '#ffffff', color: '#32324d' }} />
+        </Box>
+        <Box>
+          <Typography variant="omega" textColor="neutral700" style={{ display: 'block', marginBottom: '6px' }}>
+            Confirm temporary password
+          </Typography>
+          <input type="password" value={confirmNewAccountPassword} onChange={(event) => setConfirmNewAccountPassword(event.target.value)} disabled={isSubmitting} autoComplete="new-password" placeholder="Required only for a new account" style={{ width: '100%', minHeight: '40px', border: '1px solid #dcdce4', borderRadius: '4px', padding: '0 12px', background: '#ffffff', color: '#32324d' }} />
+          <Typography variant="omega" textColor="neutral600" style={{ display: 'block', marginTop: '6px' }}>
+            New accounts must change this temporary password after their first sign-in.
+          </Typography>
+        </Box>
+        <Flex gap={2} alignItems="flex-end">
+          <Box style={{ flex: 1 }}>
+            <Typography variant="omega" textColor="neutral700" style={{ display: 'block', marginBottom: '6px' }}>Add Tenant</Typography>
+            <select value={pendingTenantId} onChange={(event) => setPendingTenantId(event.target.value)} disabled={isLoading || isSubmitting || !availableOptions.length} style={{ width: '100%', minHeight: '40px', border: '1px solid #dcdce4', borderRadius: '4px', padding: '0 12px', background: '#ffffff', color: '#32324d' }}>
+              <option value="">{isLoading ? 'Loading tenants...' : availableOptions.length ? 'Select a tenant to add' : 'All tenants selected'}</option>
+              {availableOptions.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.label}</option>)}
+            </select>
+          </Box>
+          <Button variant="secondary" size="S" type="button" disabled={!pendingTenantId || isSubmitting} onClick={addTenant}>Add</Button>
+        </Flex>
+        <Box background="neutral0" borderColor="neutral200" hasRadius padding={2}>
+          {selectedOptions.length ? (
+            <Flex gap={2} wrap="wrap">
+              {selectedOptions.map((tenant) => (
+                <Box key={tenant.id} background="primary100" borderColor="primary200" hasRadius paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1}>
+                  <Flex gap={2} alignItems="center">
+                    <Typography variant="pi" textColor="primary700">{tenant.label}</Typography>
+                    <button type="button" onClick={() => setSelectedTenantIds((current) => current.filter((id) => id !== tenant.id))} disabled={isSubmitting} style={{ border: 'none', background: 'transparent', color: '#4945ff', cursor: isSubmitting ? 'default' : 'pointer', fontSize: '14px', lineHeight: 1, padding: 0 }} aria-label={`Remove ${tenant.label}`}>x</button>
+                  </Flex>
+                </Box>
+              ))}
+            </Flex>
+          ) : <Typography variant="omega" textColor="neutral600">No tenants selected yet.</Typography>}
+        </Box>
+      </Flex>
+    </Box>
+  );
+  const action = <Button type="button" onClick={submitCreate} loading={isSubmitting} disabled={isLoading}>Create Admin Leader</Button>;
+  return <>{mountNode ? createPortal(content, mountNode) : content}{actionMountNode ? createPortal(action, actionMountNode) : <Flex justifyContent="flex-end" marginTop={3}>{action}</Flex>}</>;
+};
+
 const ReadOnlyField = ({ label, value, monospace = false }) => (
   <Box
     style={{
@@ -2671,6 +2904,39 @@ const forceTenantAdminLogoutAfterPasswordChange = () => {
   }, 1200);
 };
 
+const installFirstLoginPasswordChangeGuard = () => {
+  if (typeof window === 'undefined' || window.__firstLoginPasswordChangeGuardInstalled) {
+    return;
+  }
+
+  window.__firstLoginPasswordChangeGuardInstalled = true;
+  void fetchTenantAdminCapabilities()
+    .then((capabilities) => {
+      if (capabilities?.mustChangePassword !== true) {
+        return;
+      }
+
+      const profilePath = '/admin/me';
+      if (window.location.pathname !== profilePath) {
+        window.location.replace(`${profilePath}?forcePasswordChange=1`);
+        return;
+      }
+
+      try {
+        const noticeKey = 'firstLoginPasswordChangeNoticeShown';
+        if (!window.sessionStorage.getItem(noticeKey)) {
+          window.sessionStorage.setItem(noticeKey, '1');
+          window.alert('Change your temporary password before accessing the Loyalty Program administration area.');
+        }
+      } catch (_error) {
+        // The backend still enforces the password change if storage is unavailable.
+      }
+    })
+    .catch(() => {
+      // Sensitive backend routes remain protected even if the UI capability call fails.
+    });
+};
+
 const redirectTenantAdminToOwnRecord = async () => {
   if (typeof window === 'undefined' || window.__tenantAdminRecordRedirectInFlight) {
     return;
@@ -3054,6 +3320,7 @@ const bootstrap = (app) => {
   installAppUsersSortGuard();
   installTenantAdminSettingsGuard();
   installTenantAdminProfilePasswordGuard();
+  installFirstLoginPasswordChangeGuard();
 
   app.injectContentManagerComponent('editView', 'right-links', {
     name: 'voice-call-panel',
@@ -3088,6 +3355,11 @@ const bootstrap = (app) => {
   app.injectContentManagerComponent('editView', 'right-links', {
     name: 'tenant-admin-panel',
     Component: TenantAdminPanel,
+  });
+
+  app.injectContentManagerComponent('editView', 'right-links', {
+    name: 'admin-leader-create-panel',
+    Component: AdminLeaderCreateTenantSelector,
   });
 
   app.injectContentManagerComponent('listView', 'actions', {

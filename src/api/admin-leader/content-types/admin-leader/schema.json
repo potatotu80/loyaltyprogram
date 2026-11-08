@@ -5,7 +5,7 @@
     "singularName": "admin-leader",
     "pluralName": "admin-leaders",
     "displayName": "Admin Leader",
-    "description": "Scopes a Strapi admin account to the Tenant Admins they manage"
+    "description": "Scopes a Strapi admin account to approved tenants and the Tenant Admins they manage"
   },
   "options": {
     "draftAndPublish": false
@@ -38,6 +38,12 @@
     "name": { "type": "string", "required": true },
     "admin_user_id": { "type": "integer", "unique": true },
     "admin_email": { "type": "email", "required": true, "unique": true },
+    "tenants": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::tenant.tenant",
+      "inversedBy": "admin_leaders"
+    },
     "tenant_admins": {
       "type": "relation",
       "relation": "oneToMany",

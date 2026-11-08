@@ -32,6 +32,12 @@ const {
   isAdminLeaderRole,
   parsePositiveInt,
 } = require('./utils/tenant-access');
+const {
+  completePasswordChange,
+  mustChangePassword,
+  removeAdminAccountSecurity,
+  requirePasswordChange,
+} = require('./utils/admin-account-security');
 const TENANT_ADMIN_BULK_SENTINEL = '__tenant_admin_bulk__:';
 const SHARED_APP_UID = 'api::shared-app.shared-app';
 
@@ -202,6 +208,21 @@ const isContentManagerConfigurationRequest = (requestPath) => (
   /\/content-manager\/collection-types\/[^/]+\/configuration$/.test(String(requestPath || ''))
 );
 
+const isPasswordChangeRestrictedAdminRequest = (requestPath) => {
+  const path = String(requestPath || '').replace(/^\/admin(?=\/)/, '');
+  if (path === '/tenant-admin/capabilities' || path === '/admin/users/me' || path === '/admin/renew-token') {
+    return false;
+  }
+
+  return (
+    path.startsWith('/content-manager/') ||
+    path.startsWith('/tenant-admin/') ||
+    path.startsWith('/contact-export') ||
+    path.startsWith('/app-user-gallery/') ||
+    path.startsWith('/app-user-selfie/')
+  );
+};
+
 const getContentManagerRelationParams = (requestPath) => {
   const existingMatch = requestPath.match(/^\/content-manager\/relations\/([^/]+)\/(\d+)\/([^/]+)/);
   if (existingMatch) {
@@ -362,6 +383,11 @@ const getScopedUserFilter = (tenantContext) => {
   }
 
   if (!ownershipFilters.length) {
+    // A Leader may administer a tenant without yet owning a Tenant Admin team.
+    // Do not expose every record in that tenant before a team mapping exists.
+    if (tenantContext?.isAdminLeader) {
+      return { id: { $in: [] } };
+    }
     return getTenantIdsFilter(tenantIds);
   }
 
@@ -386,6 +412,9 @@ const getScopedContactFilter = (tenantContext) => {
   }
 
   if (!ownershipFilters.length) {
+    if (tenantContext?.isAdminLeader) {
+      return { id: { $in: [] } };
+    }
     return getTenantIdsFilter(tenantIds);
   }
 
@@ -1093,6 +1122,7 @@ const attachTenantAdminPermissionExpansion = (strapi) => {
       controller.updateMe = async (ctx) => {
         const adminUser = ctx.state?.user;
         const tenantContext = await getAdminTenantContext(strapi, adminUser);
+        let hasPasswordChange = false;
         if (!tenantContext.isSuperAdmin && tenantContext.tenantIds.length) {
           const body =
             ctx.request?.body && typeof ctx.request.body === 'object'
@@ -1119,7 +1149,7 @@ const attachTenantAdminPermissionExpansion = (strapi) => {
           const hasCurrentPassword = Boolean(String(passwordBody.currentPassword || '').trim());
           const hasPassword = Boolean(String(passwordBody.password || '').trim());
           const hasConfirmPassword = Boolean(String(passwordBody.confirmPassword || '').trim());
-          const hasPasswordChange = hasCurrentPassword && hasPassword;
+          hasPasswordChange = hasCurrentPassword && hasPassword;
 
           strapi.log.info(
             `[tenant-admin][updateMe] user=${adminUser?.id || 'unknown'} topKeys=${Object.keys(body).join(',') || '-'} userKeys=${Object.keys(bodyUser || {}).join(',') || '-'} dataKeys=${Object.keys(bodyData || {}).join(',') || '-'} passwordFields=${JSON.stringify({
@@ -1148,14 +1178,21 @@ const attachTenantAdminPermissionExpansion = (strapi) => {
           }
         }
 
-        return originalUpdateMe(ctx);
+        const response = await originalUpdateMe(ctx);
+        if (hasPasswordChange && adminUser?.id) {
+          const clearedRequirement = await completePasswordChange(strapi, adminUser.id);
+          if (clearedRequirement) {
+            strapi.log.info(`[admin-account-security] password-change-completed adminUser=${adminUser.id}`);
+          }
+        }
+        return response;
       };
   }
 
   controller.__tenantPermissionWrapped = true;
 };
 
-const ensureAdminLeaderTenantAdminReadPermission = async (strapi) => {
+const ensureAdminLeaderContentManagerPermissions = async (strapi) => {
   const adminLeaderRoles = (await strapi.entityService.findMany('admin::role', {
     fields: ['id', 'name', 'code'],
     limit: 1000,
@@ -1165,42 +1202,99 @@ const ensureAdminLeaderTenantAdminReadPermission = async (strapi) => {
     return;
   }
 
-  const action = 'plugin::content-manager.explorer.read';
-  const fields = Object.keys(strapi.getModel(APP_TENANT_ADMIN_UID)?.attributes || {});
+  const permissionDefinitions = [
+    { subject: APP_USER_UID, actions: ['read'] },
+    { subject: CONTACT_UID, actions: ['read'] },
+    { subject: APP_TENANT_ADMIN_UID, actions: ['read', 'create', 'update'] },
+  ];
   let createdCount = 0;
 
   for (const role of adminLeaderRoles) {
-    const existingPermission = await strapi.db.query('admin::permission').findOne({
-      where: {
-        action,
-        subject: APP_TENANT_ADMIN_UID,
-        role: {
-          id: role.id,
-        },
-      },
-      select: ['id'],
-    });
+    for (const definition of permissionDefinitions) {
+      const fields = Object.keys(strapi.getModel(definition.subject)?.attributes || {});
+      for (const operation of definition.actions) {
+        const action = `plugin::content-manager.explorer.${operation}`;
+        const existingPermission = await strapi.db.query('admin::permission').findOne({
+          where: {
+            action,
+            subject: definition.subject,
+            role: {
+              id: role.id,
+            },
+          },
+          select: ['id'],
+        });
 
-    if (existingPermission) {
-      continue;
+        if (existingPermission) {
+          continue;
+        }
+
+        await strapi.db.query('admin::permission').create({
+          data: {
+            action,
+            subject: definition.subject,
+            properties: { fields },
+            conditions: [],
+            role: role.id,
+          },
+        });
+        createdCount += 1;
+      }
     }
-
-    await strapi.db.query('admin::permission').create({
-      data: {
-        action,
-        subject: APP_TENANT_ADMIN_UID,
-        properties: { fields },
-        conditions: [],
-        role: role.id,
-      },
-    });
-    createdCount += 1;
   }
 
   if (createdCount) {
     strapi.log.info(
-      `[admin-leader][permissions] granted Tenant Admin read permissions=${createdCount}`
+      `[admin-leader][permissions] granted scoped Content Manager permissions=${createdCount}`
     );
+  }
+};
+
+const backfillAdminLeaderTenants = async (strapi) => {
+  const leaders = await strapi.entityService.findMany(APP_ADMIN_LEADER_UID, {
+    fields: ['id'],
+    populate: {
+      tenants: {
+        fields: ['id'],
+      },
+      tenant_admins: {
+        fields: ['id'],
+        populate: {
+          tenant: {
+            fields: ['id'],
+          },
+        },
+      },
+    },
+    limit: 1000,
+  });
+
+  let updatedCount = 0;
+  for (const leader of leaders) {
+    const directTenantIds = new Set(
+      (leader.tenants || []).map((tenant) => parsePositiveInt(tenant?.id)).filter(Boolean)
+    );
+    const legacyTenantIds = (leader.tenant_admins || [])
+      .map((tenantAdmin) => parsePositiveInt(tenantAdmin?.tenant?.id))
+      .filter(Boolean);
+    const missingTenantIds = [...new Set(legacyTenantIds)].filter((id) => !directTenantIds.has(id));
+
+    if (!missingTenantIds.length) {
+      continue;
+    }
+
+    await strapi.entityService.update(APP_ADMIN_LEADER_UID, leader.id, {
+      data: {
+        tenants: {
+          connect: missingTenantIds.map((id) => ({ id })),
+        },
+      },
+    });
+    updatedCount += 1;
+  }
+
+  if (updatedCount) {
+    strapi.log.info(`[admin-leader][tenant-backfill] updated leaders=${updatedCount}`);
   }
 };
 
@@ -2524,6 +2618,13 @@ module.exports = {
 
       applyScopedAdminCorsHeaders(ctx);
 
+      if (
+        isPasswordChangeRestrictedAdminRequest(ctx.request.path || '') &&
+        await mustChangePassword(strapi, adminUser.id)
+      ) {
+        return ctx.forbidden('You must change your temporary password before accessing this area.');
+      }
+
       const relationRequest = getContentManagerRelationParams(ctx.request.path || '');
       if (ctx.method === 'GET' && relationRequest?.targetField === 'tenant') {
         const { model, entityId, mode } = relationRequest;
@@ -3009,6 +3110,7 @@ module.exports = {
 
               const sharedApp = await findSharedAppConfig(strapi);
               const tenantContext = await getAdminTenantContext(strapi, adminUser);
+              const passwordChangeRequired = await mustChangePassword(strapi, adminUser.id);
               ctx.body = {
                 data: {
                   enabled:
@@ -3056,6 +3158,7 @@ module.exports = {
                     tenantContext.isAdminLeader ||
                     tenantContext.isSuperAdmin ||
                     sharedApp?.enable_tenant_admin_contact_export !== false,
+                  mustChangePassword: passwordChangeRequired,
                   tenantAdminRecordId,
                 },
               };
@@ -3155,6 +3258,159 @@ module.exports = {
                 androidApplicationId: updatedTenant.android_application_id,
               },
             };
+          },
+          config: {
+            policies: ['admin::isAuthenticatedAdmin'],
+          },
+        },
+        {
+          method: 'GET',
+          path: '/admin-leader/available-tenants',
+          handler: async (ctx) => {
+            const adminUser = await getAdminRequestUser(ctx, strapi);
+            if (!adminUser?.id) {
+              return ctx.unauthorized('Admin authentication is required.');
+            }
+
+            const tenantContext = await getAdminTenantContext(strapi, adminUser);
+            if (!tenantContext.isSuperAdmin) {
+              return ctx.forbidden('Only Super Admins can create Admin Leaders.');
+            }
+
+            const tenants = await strapi.entityService.findMany(APP_TENANT_UID, {
+              fields: ['id', 'name', 'slug'],
+              sort: ['name:asc'],
+              limit: 1000,
+            });
+            ctx.body = { data: tenants };
+          },
+          config: {
+            policies: ['admin::isAuthenticatedAdmin'],
+          },
+        },
+        {
+          method: 'POST',
+          path: '/admin-leader/create-with-account',
+          handler: async (ctx) => {
+            const adminUser = await getAdminRequestUser(ctx, strapi);
+            if (!adminUser?.id) {
+              return ctx.unauthorized('Admin authentication is required.');
+            }
+
+            const tenantContext = await getAdminTenantContext(strapi, adminUser);
+            if (!tenantContext.isSuperAdmin) {
+              return ctx.forbidden('Only Super Admins can create Admin Leaders.');
+            }
+
+            const data = getRequestData(ctx) || {};
+            const leaderName = String(data.name || '').trim();
+            const adminEmail = String(data.admin_email || '').trim().toLowerCase();
+            const tenantIds = Array.isArray(data.tenantIds)
+              ? [...new Set(data.tenantIds.map((entry) => parsePositiveInt(entry)).filter(Boolean))]
+              : [];
+
+            if (!leaderName || !adminEmail) {
+              return ctx.badRequest('Leader Name and Admin Email are required.');
+            }
+            if (!tenantIds.length) {
+              return ctx.badRequest('Please select at least one tenant.');
+            }
+
+            const selectedTenants = await strapi.entityService.findMany(APP_TENANT_UID, {
+              filters: { id: { $in: tenantIds } },
+              fields: ['id'],
+              limit: 1000,
+            });
+            if (selectedTenants.length !== tenantIds.length) {
+              return ctx.badRequest('One or more selected tenants no longer exist.');
+            }
+
+            let targetAdminUser = await strapi.db.query('admin::user').findOne({
+              where: { email: adminEmail },
+              populate: ['roles'],
+            });
+            let createdAdminUserId = null;
+
+            if (targetAdminUser) {
+              const hasAdminLeaderRole = Array.isArray(targetAdminUser.roles) && targetAdminUser.roles.some(isAdminLeaderRole);
+              if (!hasAdminLeaderRole) {
+                return ctx.badRequest('This email already belongs to a Strapi admin account without the Admin Leader role.');
+              }
+            } else {
+              const newAccountPassword = String(data.newAccountPassword || '');
+              const passwordIsValid =
+                newAccountPassword.length >= 8 &&
+                /[a-z]/.test(newAccountPassword) &&
+                /[A-Z]/.test(newAccountPassword) &&
+                /\d/.test(newAccountPassword);
+              if (!passwordIsValid) {
+                return ctx.badRequest(
+                  'Enter a temporary password with at least 8 characters, uppercase, lowercase, and a number.'
+                );
+              }
+
+              const roles = await strapi.db.query('admin::role').findMany({
+                fields: ['id', 'name', 'code'],
+                limit: 1000,
+              });
+              const adminLeaderRole = roles.find(isAdminLeaderRole);
+              if (!adminLeaderRole) {
+                return ctx.internalServerError('The Admin Leader role is not configured.');
+              }
+
+              const nameParts = leaderName.split(/\s+/).filter(Boolean);
+              const createdAdminUser = await strapi.admin.services.user.create({
+                firstname: nameParts[0] || adminEmail.split('@')[0] || 'Admin',
+                lastname: nameParts.slice(1).join(' ') || 'Leader',
+                email: adminEmail,
+                password: newAccountPassword,
+                roles: [adminLeaderRole.id],
+                isActive: true,
+                registrationToken: null,
+              });
+              targetAdminUser = {
+                id: createdAdminUser.id,
+                email: createdAdminUser.email,
+              };
+              createdAdminUserId = createdAdminUser.id;
+            }
+
+            let createdLeader = null;
+            try {
+              createdLeader = await strapi.entityService.create(APP_ADMIN_LEADER_UID, {
+                data: {
+                  name: leaderName,
+                  admin_user_id: targetAdminUser.id,
+                  admin_email: targetAdminUser.email,
+                  tenants: {
+                    connect: tenantIds.map((id) => ({ id })),
+                  },
+                },
+                populate: {
+                  tenants: {
+                    fields: ['id', 'name', 'slug'],
+                  },
+                },
+              });
+
+              if (createdAdminUserId) {
+                await requirePasswordChange(strapi, createdAdminUserId);
+                strapi.log.info(
+                  `[admin-leader][account-create] adminUser=${createdAdminUserId} email=${adminEmail} createdBy=${adminUser.id}`
+                );
+              }
+            } catch (error) {
+              if (createdLeader?.id) {
+                await strapi.entityService.delete(APP_ADMIN_LEADER_UID, createdLeader.id);
+              }
+              if (createdAdminUserId) {
+                await removeAdminAccountSecurity(strapi, createdAdminUserId);
+                await strapi.db.query('admin::user').delete({ where: { id: createdAdminUserId } });
+              }
+              throw error;
+            }
+
+            ctx.body = { data: createdLeader };
           },
           config: {
             policies: ['admin::isAuthenticatedAdmin'],
@@ -3289,9 +3545,21 @@ module.exports = {
             if (adminLeaderId) {
               const adminLeader = await strapi.entityService.findOne(APP_ADMIN_LEADER_UID, adminLeaderId, {
                 fields: ['id'],
+                populate: {
+                  tenants: {
+                    fields: ['id'],
+                  },
+                },
               });
               if (!adminLeader) {
                 return ctx.badRequest('The selected Admin Leader no longer exists.');
+              }
+
+              const leaderTenantIds = new Set(
+                (adminLeader.tenants || []).map((tenant) => parsePositiveInt(tenant?.id)).filter(Boolean)
+              );
+              if (tenantIds.some((tenantId) => !leaderTenantIds.has(tenantId))) {
+                return ctx.badRequest('The selected Tenant Admin must be linked only to tenants assigned to its Admin Leader.');
               }
             }
 
@@ -3306,6 +3574,10 @@ module.exports = {
 
             const createdRecords = [];
             try {
+              if (createdAdminUserId) {
+                await requirePasswordChange(strapi, createdAdminUserId);
+              }
+
               for (const tenantId of tenantIds) {
                 const created = await strapi.entityService.create(APP_TENANT_ADMIN_UID, {
                   data: {
@@ -3332,6 +3604,7 @@ module.exports = {
             } catch (error) {
               // Do not leave an unusable account behind when no mapping was created.
               if (createdAdminUserId && createdRecords.length === 0) {
+                await removeAdminAccountSecurity(strapi, createdAdminUserId);
                 await strapi.db.query('admin::user').delete({ where: { id: createdAdminUserId } });
               }
               throw error;
@@ -3548,7 +3821,8 @@ module.exports = {
    * run jobs, or perform some special logic.
    */
   async bootstrap({ strapi }) {
-    await ensureAdminLeaderTenantAdminReadPermission(strapi);
+    await ensureAdminLeaderContentManagerPermissions(strapi);
+    await backfillAdminLeaderTenants(strapi);
     await syncTenantAdminListConfiguration(strapi);
     await syncAppUserListConfiguration(strapi);
     await syncContactListConfiguration(strapi);

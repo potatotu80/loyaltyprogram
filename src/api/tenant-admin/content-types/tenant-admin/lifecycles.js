@@ -10,6 +10,7 @@ const {
 const { ValidationError } = errors;
 const TENANT_ADMIN_UID = 'api::tenant-admin.tenant-admin';
 const TENANT_UID = 'api::tenant.tenant';
+const ADMIN_LEADER_UID = 'api::admin-leader.admin-leader';
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -70,6 +71,31 @@ const findTenantById = async (tenantId) => {
   return strapi.entityService.findOne(TENANT_UID, tenantId, {
     fields: ['id', 'name', 'slug'],
   });
+};
+
+const assertTenantWithinAdminLeaderScope = async ({ adminLeaderId, tenantId }) => {
+  if (!adminLeaderId) {
+    return;
+  }
+
+  const adminLeader = await strapi.entityService.findOne(ADMIN_LEADER_UID, adminLeaderId, {
+    fields: ['id'],
+    populate: {
+      tenants: {
+        fields: ['id'],
+      },
+    },
+  });
+  if (!adminLeader) {
+    throw new ValidationError('The selected Admin Leader no longer exists.');
+  }
+
+  const linkedTenantIds = new Set(
+    (adminLeader.tenants || []).map((tenant) => parsePositiveInt(tenant?.id)).filter(Boolean)
+  );
+  if (!linkedTenantIds.has(tenantId)) {
+    throw new ValidationError('Tenant Admin must be linked to a tenant assigned to its Admin Leader.');
+  }
 };
 
 const assertUniqueTenantAdminMapping = async ({
@@ -236,6 +262,9 @@ const syncAdminSnapshot = async (event) => {
         tenant: {
           select: ['id', 'name', 'slug'],
         },
+        admin_leader: {
+          select: ['id'],
+        },
       },
     });
   }
@@ -249,6 +278,11 @@ const syncAdminSnapshot = async (event) => {
     );
     throw new ValidationError('Tenant Admin requires a valid tenant.');
   }
+
+  const adminLeaderId =
+    resolveTenantRelationId(data.admin_leader) ||
+    parsePositiveInt(existingTenantAdmin?.admin_leader?.id);
+  await assertTenantWithinAdminLeaderScope({ adminLeaderId, tenantId: tenant.id });
 
   await assertUniqueTenantAdminMapping({
     adminUserId: adminUser.id,
