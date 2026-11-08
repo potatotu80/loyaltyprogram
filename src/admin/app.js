@@ -919,6 +919,11 @@ const useTenantAdminFormEnhancements = ({ slug }) => {
         if (qrUrlContainer) {
           qrUrlContainer.style.display = 'none';
         }
+
+        const adminLeaderContainer = findFieldContainer('admin_leader');
+        if (adminLeaderContainer) {
+          adminLeaderContainer.style.display = 'none';
+        }
       }
     };
 
@@ -943,6 +948,8 @@ const TenantAdminCreateTenantSelector = () => {
   const [selectedTenantIds, setSelectedTenantIds] = useState([]);
   const [newAccountPassword, setNewAccountPassword] = useState('');
   const [confirmNewAccountPassword, setConfirmNewAccountPassword] = useState('');
+  const [leaderOptions, setLeaderOptions] = useState([]);
+  const [selectedAdminLeaderId, setSelectedAdminLeaderId] = useState('');
 
   useEffect(() => {
     if (!isCreatePage) {
@@ -983,6 +990,38 @@ const TenantAdminCreateTenantSelector = () => {
       isMounted = false;
     };
   }, [get, isCreatePage, toggleNotification]);
+
+  useEffect(() => {
+    if (!isCreatePage) {
+      return undefined;
+    }
+
+    let isMounted = true;
+    const loadLeaders = async () => {
+      try {
+        const response = await get(`/content-manager/collection-types/${ADMIN_LEADER_UID}`, {
+          params: { page: 1, pageSize: 100, sort: 'name:ASC' },
+        });
+        if (!isMounted) return;
+
+        const results = response?.data?.results || response?.data?.data?.results || [];
+        setLeaderOptions(
+          results.map((leader) => ({
+            id: leader.id,
+            label: leader.name || leader.admin_email || String(leader.id),
+          }))
+        );
+      } catch (_error) {
+        // Admin Leaders do not need this list: the backend assigns their own profile.
+        if (isMounted) setLeaderOptions([]);
+      }
+    };
+
+    void loadLeaders();
+    return () => {
+      isMounted = false;
+    };
+  }, [get, isCreatePage]);
 
   useEffect(() => {
     if (!isCreatePage) {
@@ -1119,7 +1158,7 @@ const TenantAdminCreateTenantSelector = () => {
         role: modifiedData?.role || 'tenant_admin',
         tenant_name: String(modifiedData?.tenant_name || '').trim() || null,
         tenantIds: selectedTenantIds,
-        adminLeaderId: resolveTenantIdsFromValue(modifiedData?.admin_leader)[0] || null,
+        adminLeaderId: Number(selectedAdminLeaderId) || null,
         newAccountPassword: newAccountPassword || null,
       });
       toggleNotification({
@@ -1196,6 +1235,37 @@ const TenantAdminCreateTenantSelector = () => {
         <Typography variant="omega" textColor="neutral500">
           One QR record will be created per selected tenant.
         </Typography>
+
+        <Box>
+          <Typography
+            variant="omega"
+            textColor="neutral700"
+            style={{ display: 'block', marginBottom: '6px' }}
+          >
+            Leader Name
+          </Typography>
+          <select
+            value={selectedAdminLeaderId}
+            onChange={(event) => setSelectedAdminLeaderId(event.target.value)}
+            disabled={isSubmitting}
+            style={{
+              width: '100%',
+              minHeight: '40px',
+              border: '1px solid #dcdce4',
+              borderRadius: '4px',
+              padding: '0 12px',
+              background: '#ffffff',
+              color: '#32324d',
+            }}
+          >
+            <option value="">No Admin Leader selected</option>
+            {leaderOptions.map((leader) => (
+              <option key={leader.id} value={leader.id}>
+                {leader.label}
+              </option>
+            ))}
+          </select>
+        </Box>
 
         <Box>
           <Typography
