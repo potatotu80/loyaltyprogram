@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Box, Button, Flex, Typography } from '@strapi/design-system';
 import { ExternalLink } from '@strapi/icons';
-import { useCMEditViewDataManager, useFetchClient, useNotification } from '@strapi/helper-plugin';
+import { auth, useCMEditViewDataManager, useFetchClient, useNotification } from '@strapi/helper-plugin';
 import { useRouteMatch } from 'react-router-dom';
 import { Device } from '@twilio/voice-sdk';
 
@@ -2783,7 +2783,7 @@ const ADMIN_LOGOUT_PATH = '/admin/logout';
 
 const getAdminAuthorizationHeader = () => {
   try {
-    const token = String(window.localStorage.getItem('jwtToken') || '').trim();
+    const token = String(auth.getToken() || '').trim();
     return token ? { Authorization: `Bearer ${token}` } : {};
   } catch (_error) {
     return {};
