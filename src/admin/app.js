@@ -2769,7 +2769,7 @@ const installAppUsersSortGuard = () => {
   });
 };
 
-const TENANT_ADMIN_CAPABILITIES_PATH = '/admin/tenant-admin/capabilities';
+const TENANT_ADMIN_CAPABILITIES_PATH = '/tenant-admin/capabilities';
 const SETTINGS_PATH_PREFIX = '/admin/settings';
 const PROFILE_PATH_PREFIX = '/admin/me';
 const TENANT_ADMIN_DEFAULT_PATH = '/admin/content-manager/collectionType/api::app-user.app-user';

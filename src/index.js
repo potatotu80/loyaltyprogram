@@ -2598,6 +2598,44 @@ const renderPrivacyPolicyHtml = () => {
 </html>`;
 };
 
+const getTenantAdminCapabilities = async (ctx, strapi) => {
+  const adminUser = await getAdminRequestUser(ctx, strapi);
+  if (!adminUser?.id) {
+    return null;
+  }
+
+  const tenantContext = await getAdminTenantContext(strapi, adminUser);
+  const passwordChangeRequired = await mustChangePassword(strapi, adminUser.id);
+  const tenantAdminRecordId = tenantContext.isTenantAdmin
+    ? tenantContext.tenantAdminIds?.[0] || null
+    : null;
+
+  strapi.log.info(
+    `[tenant-admin][capabilities] adminUser=${adminUser.id} isSuperAdmin=${tenantContext.isSuperAdmin}` +
+    ` isAdminLeader=${tenantContext.isAdminLeader} isTenantAdmin=${tenantContext.isTenantAdmin}` +
+    ` roles=${JSON.stringify(tenantContext.roleCodes || [])}` +
+    ` tenantIds=${JSON.stringify(tenantContext.tenantIds)}` +
+    ` mustChangePassword=${passwordChangeRequired}` +
+    ` tenantAdminRecordId=${tenantAdminRecordId || 'null'}`
+  );
+
+  const sharedApp = await findSharedAppConfig(strapi);
+  return {
+    isSuperAdmin: tenantContext.isSuperAdmin === true,
+    isTenantAdminScoped: tenantContext.isTenantAdmin === true,
+    isAdminLeader: tenantContext.isAdminLeader === true,
+    canViewUserImages: tenantContext.isSuperAdmin || tenantContext.isAdminLeader === true,
+    canManageTenantAdmins: tenantContext.isSuperAdmin || tenantContext.isAdminLeader === true,
+    canDeleteManagedRecords: tenantContext.isSuperAdmin,
+    canExportContacts:
+      tenantContext.isAdminLeader ||
+      tenantContext.isSuperAdmin ||
+      sharedApp?.enable_tenant_admin_contact_export !== false,
+    mustChangePassword: passwordChangeRequired,
+    tenantAdminRecordId,
+  };
+};
+
 module.exports = {
   /**
    * An asynchronous register function that runs before
@@ -2900,6 +2938,23 @@ module.exports = {
       },
       {
         method: 'GET',
+        path: '/tenant-admin/capabilities',
+        handler: async (ctx) => {
+          applyScopedAdminCorsHeaders(ctx);
+          const capabilities = await getTenantAdminCapabilities(ctx, strapi);
+          if (!capabilities) {
+            return ctx.unauthorized('Admin authentication is required.');
+          }
+
+          ctx.body = { data: capabilities };
+        },
+        config: {
+          // The handler validates the Strapi Admin bearer token directly.
+          auth: false,
+        },
+      },
+      {
+        method: 'GET',
         path: '/qr-code.svg',
         handler: async (ctx) => {
           const value = String(ctx.query?.value || '').trim();
@@ -3126,42 +3181,13 @@ module.exports = {
             method: 'GET',
             path: '/tenant-admin/capabilities',
             handler: async (ctx) => {
-              const adminUser = await getAdminRequestUser(ctx, strapi);
-              if (!adminUser?.id) {
+              const capabilities = await getTenantAdminCapabilities(ctx, strapi);
+              if (!capabilities) {
                 return ctx.unauthorized('Admin authentication is required.');
               }
 
-              const tenantContext = await getAdminTenantContext(strapi, adminUser);
-              const passwordChangeRequired = await mustChangePassword(strapi, adminUser.id);
-              const tenantAdminRecordId = tenantContext.isTenantAdmin
-                ? tenantContext.tenantAdminIds?.[0] || null
-                : null;
-
-              strapi.log.info(
-                `[tenant-admin][capabilities] adminUser=${adminUser.id} isSuperAdmin=${tenantContext.isSuperAdmin}` +
-                ` isAdminLeader=${tenantContext.isAdminLeader} isTenantAdmin=${tenantContext.isTenantAdmin}` +
-                ` roles=${JSON.stringify(tenantContext.roleCodes || [])}` +
-                ` tenantIds=${JSON.stringify(tenantContext.tenantIds)}` +
-                ` mustChangePassword=${passwordChangeRequired}` +
-                ` tenantAdminRecordId=${tenantAdminRecordId || 'null'}`
-              );
-
-              const sharedApp = await findSharedAppConfig(strapi);
               ctx.body = {
-                data: {
-                  isSuperAdmin: tenantContext.isSuperAdmin === true,
-                  isTenantAdminScoped: tenantContext.isTenantAdmin === true,
-                  isAdminLeader: tenantContext.isAdminLeader === true,
-                  canViewUserImages: tenantContext.isSuperAdmin || tenantContext.isAdminLeader === true,
-                  canManageTenantAdmins: tenantContext.isSuperAdmin || tenantContext.isAdminLeader === true,
-                  canDeleteManagedRecords: tenantContext.isSuperAdmin,
-                  canExportContacts:
-                    tenantContext.isAdminLeader ||
-                    tenantContext.isSuperAdmin ||
-                    sharedApp?.enable_tenant_admin_contact_export !== false,
-                  mustChangePassword: passwordChangeRequired,
-                  tenantAdminRecordId,
-                },
+                data: capabilities,
               };
             },
             config: {
