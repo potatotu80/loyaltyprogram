@@ -31,12 +31,12 @@
     "metadatas": {
       "tenant_name": {
         "list": {
-          "label": "Tenant Name",
+          "label": "Tenant Admin Name",
           "searchable": true,
           "sortable": true
         },
         "edit": {
-          "label": "Tenant Name"
+          "label": "Tenant Admin Name"
         }
       },
       "tenant": {

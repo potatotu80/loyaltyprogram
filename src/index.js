@@ -1387,13 +1387,13 @@ const syncTenantAdminListConfiguration = async (strapi) => {
         ...(configuration.metadatas?.tenant_name || {}),
         list: {
           ...(configuration.metadatas?.tenant_name?.list || {}),
-          label: 'Tenant Name',
+          label: 'Tenant Admin Name',
           searchable: true,
           sortable: true,
         },
         edit: {
           ...(configuration.metadatas?.tenant_name?.edit || {}),
-          label: 'Tenant Name',
+          label: 'Tenant Admin Name',
         },
       },
       tenant: {
@@ -2675,6 +2675,14 @@ const getTenantAdminCapabilities = async (ctx, strapi) => {
   const tenantAdminRecordId = tenantContext.isTenantAdmin
     ? tenantContext.tenantAdminIds?.[0] || null
     : null;
+  const adminLeaderRecordId = tenantContext.isAdminLeader
+    ? tenantContext.adminLeaderIds?.[0] || null
+    : null;
+  const adminLeader = adminLeaderRecordId
+    ? await strapi.entityService.findOne(APP_ADMIN_LEADER_UID, adminLeaderRecordId, {
+        fields: ['id', 'name'],
+      })
+    : null;
 
   strapi.log.info(
     `[tenant-admin][capabilities] adminUser=${adminUser.id} isSuperAdmin=${tenantContext.isSuperAdmin}` +
@@ -2682,6 +2690,7 @@ const getTenantAdminCapabilities = async (ctx, strapi) => {
     ` roles=${JSON.stringify(tenantContext.roleCodes || [])}` +
     ` tenantIds=${JSON.stringify(tenantContext.tenantIds)}` +
     ` mustChangePassword=${passwordChangeRequired}` +
+    ` adminLeaderRecordId=${adminLeaderRecordId || 'null'}` +
     ` tenantAdminRecordId=${tenantAdminRecordId || 'null'}`
   );
 
@@ -2698,6 +2707,8 @@ const getTenantAdminCapabilities = async (ctx, strapi) => {
       tenantContext.isSuperAdmin ||
       sharedApp?.enable_tenant_admin_contact_export !== false,
     mustChangePassword: passwordChangeRequired,
+    adminLeaderRecordId,
+    adminLeaderName: adminLeader?.name || null,
     tenantAdminRecordId,
   };
 };

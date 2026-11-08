@@ -950,6 +950,7 @@ const TenantAdminCreateTenantSelector = () => {
   const [confirmNewAccountPassword, setConfirmNewAccountPassword] = useState('');
   const [leaderOptions, setLeaderOptions] = useState([]);
   const [selectedAdminLeaderId, setSelectedAdminLeaderId] = useState('');
+  const [isAdminLeaderCreation, setIsAdminLeaderCreation] = useState(false);
 
   useEffect(() => {
     if (!isCreatePage) {
@@ -999,6 +1000,21 @@ const TenantAdminCreateTenantSelector = () => {
     let isMounted = true;
     const loadLeaders = async () => {
       try {
+        const capabilityResponse = await get('/tenant-admin/capabilities');
+        const capabilities = capabilityResponse?.data?.data || capabilityResponse?.data || {};
+        if (capabilities.isAdminLeader) {
+          if (isMounted) {
+            const leaderId = Number(capabilities.adminLeaderRecordId);
+            setIsAdminLeaderCreation(true);
+            setSelectedAdminLeaderId(Number.isInteger(leaderId) && leaderId > 0 ? String(leaderId) : '');
+            setLeaderOptions(leaderId ? [{
+              id: leaderId,
+              label: capabilities.adminLeaderName || 'Your Admin Leader profile',
+            }] : []);
+          }
+          return;
+        }
+
         const response = await get(`/content-manager/collection-types/${ADMIN_LEADER_UID}`, {
           params: { page: 1, pageSize: 100, sort: 'name:ASC' },
         });
@@ -1247,7 +1263,7 @@ const TenantAdminCreateTenantSelector = () => {
           <select
             value={selectedAdminLeaderId}
             onChange={(event) => setSelectedAdminLeaderId(event.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isAdminLeaderCreation}
             style={{
               width: '100%',
               minHeight: '40px',
@@ -1265,6 +1281,11 @@ const TenantAdminCreateTenantSelector = () => {
               </option>
             ))}
           </select>
+          {isAdminLeaderCreation ? (
+            <Typography variant="omega" textColor="neutral600" style={{ display: 'block', marginTop: '6px' }}>
+              Automatically linked to your Admin Leader account.
+            </Typography>
+          ) : null}
         </Box>
 
         <Box>
