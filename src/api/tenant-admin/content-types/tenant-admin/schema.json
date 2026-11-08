@@ -48,6 +48,12 @@
           "mainField": "name"
         }
       },
+      "admin_leader": {
+        "edit": {
+          "label": "Leader Name",
+          "mainField": "name"
+        }
+      },
       "admin_email": {
         "list": {
           "label": "Admin Email",

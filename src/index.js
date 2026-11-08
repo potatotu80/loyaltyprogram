@@ -1298,6 +1298,64 @@ const backfillAdminLeaderTenants = async (strapi) => {
   }
 };
 
+const syncAdminLeaderListConfiguration = async (strapi) => {
+  const contentTypesService = strapi.plugin('content-manager')?.service('content-types');
+  if (!contentTypesService) {
+    return;
+  }
+
+  const adminLeaderContentType = contentTypesService.findContentType(APP_ADMIN_LEADER_UID);
+  if (!adminLeaderContentType) {
+    return;
+  }
+
+  const configuration = await contentTypesService.findConfiguration(adminLeaderContentType);
+  const nextConfiguration = {
+    ...configuration,
+    settings: {
+      ...(configuration.settings || {}),
+      mainField: 'name',
+      defaultSortBy: 'id',
+      defaultSortOrder: 'DESC',
+    },
+    layouts: {
+      ...(configuration.layouts || {}),
+      list: ['name', 'admin_email'],
+    },
+    metadatas: {
+      ...(configuration.metadatas || {}),
+      name: {
+        ...(configuration.metadatas?.name || {}),
+        list: {
+          ...(configuration.metadatas?.name?.list || {}),
+          label: 'Leader Name',
+          searchable: true,
+          sortable: true,
+        },
+        edit: {
+          ...(configuration.metadatas?.name?.edit || {}),
+          label: 'Leader Name',
+        },
+      },
+      admin_email: {
+        ...(configuration.metadatas?.admin_email || {}),
+        list: {
+          ...(configuration.metadatas?.admin_email?.list || {}),
+          label: 'Admin Email',
+          searchable: true,
+          sortable: true,
+        },
+        edit: {
+          ...(configuration.metadatas?.admin_email?.edit || {}),
+          label: 'Admin Email',
+        },
+      },
+    },
+  };
+
+  await contentTypesService.updateConfiguration(adminLeaderContentType, nextConfiguration);
+};
+
 const syncTenantAdminListConfiguration = async (strapi) => {
   const contentTypesService = strapi.plugin('content-manager')?.service('content-types');
   if (!contentTypesService) {
@@ -1347,6 +1405,14 @@ const syncTenantAdminListConfiguration = async (strapi) => {
         edit: {
           ...(configuration.metadatas?.tenant?.edit || {}),
           label: 'Linked Tenant',
+          mainField: 'name',
+        },
+      },
+      admin_leader: {
+        ...(configuration.metadatas?.admin_leader || {}),
+        edit: {
+          ...(configuration.metadatas?.admin_leader?.edit || {}),
+          label: 'Leader Name',
           mainField: 'name',
         },
       },
@@ -3850,6 +3916,7 @@ module.exports = {
   async bootstrap({ strapi }) {
     await ensureAdminLeaderContentManagerPermissions(strapi);
     await backfillAdminLeaderTenants(strapi);
+    await syncAdminLeaderListConfiguration(strapi);
     await syncTenantAdminListConfiguration(strapi);
     await syncAppUserListConfiguration(strapi);
     await syncContactListConfiguration(strapi);
