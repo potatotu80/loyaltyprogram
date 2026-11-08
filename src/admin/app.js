@@ -2781,11 +2781,21 @@ const ADMIN_ME_API_PATH = '/admin/users/me';
 const ADMIN_LOGIN_PATH = '/admin/auth/login';
 const ADMIN_LOGOUT_PATH = '/admin/logout';
 
+const getAdminAuthorizationHeader = () => {
+  try {
+    const token = String(window.localStorage.getItem('jwtToken') || '').trim();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch (_error) {
+    return {};
+  }
+};
+
 const fetchTenantAdminCapabilities = async () => {
   const response = await fetch(TENANT_ADMIN_CAPABILITIES_PATH, {
     credentials: 'include',
     headers: {
       Accept: 'application/json',
+      ...getAdminAuthorizationHeader(),
     },
   });
 
