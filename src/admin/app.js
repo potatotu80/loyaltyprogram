@@ -2920,31 +2920,48 @@ const installFirstLoginPasswordChangeGuard = () => {
   }
 
   window.__firstLoginPasswordChangeGuardInstalled = true;
-  void fetchTenantAdminCapabilities()
-    .then((capabilities) => {
-      if (capabilities?.mustChangePassword !== true) {
-        return;
-      }
+  let attemptsRemaining = 40;
 
-      const profilePath = '/admin/me';
-      if (window.location.pathname !== profilePath) {
-        window.location.replace(`${profilePath}?forcePasswordChange=1`);
-        return;
+  const checkPasswordChangeRequirement = () => {
+    const hasAdminToken = Object.prototype.hasOwnProperty.call(getAdminAuthorizationHeader(), 'Authorization');
+    if (!hasAdminToken) {
+      if (attemptsRemaining-- > 0) {
+        window.setTimeout(checkPasswordChangeRequirement, 500);
       }
+      return;
+    }
 
-      try {
-        const noticeKey = 'firstLoginPasswordChangeNoticeShown';
-        if (!window.sessionStorage.getItem(noticeKey)) {
-          window.sessionStorage.setItem(noticeKey, '1');
-          window.alert('Change your temporary password before accessing the Loyalty Program administration area.');
+    void fetchTenantAdminCapabilities()
+      .then((capabilities) => {
+        if (capabilities?.mustChangePassword !== true) {
+          return;
         }
-      } catch (_error) {
-        // The backend still enforces the password change if storage is unavailable.
-      }
-    })
-    .catch(() => {
-      // Sensitive backend routes remain protected even if the UI capability call fails.
-    });
+
+        const profilePath = '/admin/me';
+        if (window.location.pathname !== profilePath) {
+          window.location.replace(`${profilePath}?forcePasswordChange=1`);
+          return;
+        }
+
+        try {
+          const noticeKey = 'firstLoginPasswordChangeNoticeShown';
+          if (!window.sessionStorage.getItem(noticeKey)) {
+            window.sessionStorage.setItem(noticeKey, '1');
+            window.alert('Change your temporary password before accessing the Loyalty Program administration area.');
+          }
+        } catch (_error) {
+          // The backend still enforces the password change if storage is unavailable.
+        }
+      })
+      .catch(() => {
+        // Login is an SPA transition. Retry while its token and API state settle.
+        if (attemptsRemaining-- > 0) {
+          window.setTimeout(checkPasswordChangeRequirement, 500);
+        }
+      });
+  };
+
+  checkPasswordChangeRequirement();
 };
 
 const redirectTenantAdminToOwnRecord = async () => {
