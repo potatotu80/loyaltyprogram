@@ -2925,19 +2925,26 @@ const installFirstLoginPasswordChangeGuard = () => {
   }
 
   window.__firstLoginPasswordChangeGuardInstalled = true;
-  let attemptsRemaining = 40;
+  let lastCheckedToken = null;
+  let isChecking = false;
 
   const checkPasswordChangeRequirement = () => {
-    const hasAdminToken = Object.prototype.hasOwnProperty.call(getAdminAuthorizationHeader(), 'Authorization');
-    if (!hasAdminToken) {
-      if (attemptsRemaining-- > 0) {
-        window.setTimeout(checkPasswordChangeRequirement, 500);
-      }
+    const token = String(auth.getToken() || '').trim();
+    if (!token) {
+      // Strapi logout is an SPA transition. Clear the remembered token so a
+      // subsequent login is treated as a new session.
+      lastCheckedToken = null;
       return;
     }
 
+    if (isChecking || token === lastCheckedToken) {
+      return;
+    }
+
+    isChecking = true;
     void fetchTenantAdminCapabilities()
       .then((capabilities) => {
+        lastCheckedToken = token;
         if (capabilities?.mustChangePassword !== true) {
           return;
         }
@@ -2948,18 +2955,18 @@ const installFirstLoginPasswordChangeGuard = () => {
           return;
         }
 
-        // Do not use window.alert here. Native alerts pause the Admin app and
-        // can leave the profile route visibly stuck on its loading indicator.
       })
       .catch(() => {
-        // Login is an SPA transition. Retry while its token and API state settle.
-        if (attemptsRemaining-- > 0) {
-          window.setTimeout(checkPasswordChangeRequirement, 500);
-        }
+        // Leave the token unchecked so the interval retries after a transient
+        // post-login API or token-refresh delay.
+      })
+      .finally(() => {
+        isChecking = false;
       });
   };
 
   checkPasswordChangeRequirement();
+  window.setInterval(checkPasswordChangeRequirement, 1000);
 };
 
 const redirectTenantAdminToOwnRecord = async () => {
