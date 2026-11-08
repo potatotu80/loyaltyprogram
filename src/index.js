@@ -3110,7 +3110,6 @@ module.exports = {
 
               const sharedApp = await findSharedAppConfig(strapi);
               const tenantContext = await getAdminTenantContext(strapi, adminUser);
-              const passwordChangeRequired = await mustChangePassword(strapi, adminUser.id);
               ctx.body = {
                 data: {
                   enabled:
@@ -3133,6 +3132,7 @@ module.exports = {
               }
 
               const tenantContext = await getAdminTenantContext(strapi, adminUser);
+              const passwordChangeRequired = await mustChangePassword(strapi, adminUser.id);
               const tenantAdminRecordId = tenantContext.isTenantAdmin
                 ? tenantContext.tenantAdminIds?.[0] || null
                 : null;
