@@ -3142,6 +3142,7 @@ module.exports = {
                 ` isAdminLeader=${tenantContext.isAdminLeader} isTenantAdmin=${tenantContext.isTenantAdmin}` +
                 ` roles=${JSON.stringify(tenantContext.roleCodes || [])}` +
                 ` tenantIds=${JSON.stringify(tenantContext.tenantIds)}` +
+                ` mustChangePassword=${passwordChangeRequired}` +
                 ` tenantAdminRecordId=${tenantAdminRecordId || 'null'}`
               );
 
