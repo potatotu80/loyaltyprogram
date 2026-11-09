@@ -780,7 +780,7 @@ const attachTenantScopedContentManagerControllers = (strapi) => {
       }
 
       const entity = await strapi.entityService.findOne(APP_TENANT_ADMIN_UID, entityId, {
-        fields: Object.keys(strapi.getModel(APP_TENANT_ADMIN_UID)?.attributes || {}),
+        fields: TENANT_ADMIN_FIELDS,
         populate: {
           tenant: {
             fields: ['id', 'name', 'slug'],
@@ -1719,6 +1719,20 @@ const getTenantAdminScopeFilter = (tenantContext) => {
     : null;
 };
 
+// Production records predate Strapi's camel-case audit columns. Select only
+// actual Tenant Admin fields instead of asking Entity Service for every model attribute.
+const TENANT_ADMIN_FIELDS = [
+  'id',
+  'admin_user_id',
+  'admin_email',
+  'tenant_name',
+  'qr_token',
+  'qr_code_url',
+  'role',
+  'created_at',
+  'updated_at',
+];
+
 const getScopedTenantAdminListSort = (value) => {
   const [requestedField, requestedDirection] = String(value || 'id:DESC').split(':');
   const allowedFields = new Set(['id', 'tenant_name', 'admin_email']);
@@ -1770,6 +1784,7 @@ const buildScopedTenantAdminListResponse = async ({ strapi, tenantContext, reque
         sort,
         start,
         limit: pageSize,
+        fields: TENANT_ADMIN_FIELDS,
         populate: {
           tenant: {
             fields: ['id', 'name', 'slug'],
@@ -2936,7 +2951,7 @@ module.exports = {
           }
 
           const entity = await strapi.entityService.findOne(APP_TENANT_ADMIN_UID, entityId, {
-            fields: Object.keys(strapi.getModel(APP_TENANT_ADMIN_UID)?.attributes || {}),
+            fields: TENANT_ADMIN_FIELDS,
             populate: {
               tenant: {
                 fields: ['id', 'name', 'slug'],
