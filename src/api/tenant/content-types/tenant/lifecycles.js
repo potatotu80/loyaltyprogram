@@ -301,17 +301,33 @@ const provisionSelectedLeaderTenantAdmins = async (tenantId, requestedLeaderIds 
       // The legacy production table was migrated from link tables to direct
       // columns. Write those columns explicitly instead of letting Entity
       // Service discard the relation during its legacy transformation.
-      await strapi.db.connection('tenant_admins').insert({
-        admin_user_id: adminUserId,
-        admin_email: source.admin_email,
-        tenant_name: tenantAdminName,
-        role: source.role || 'tenant_admin',
-        tenant: tenant.id,
-        admin_leader: source.admin_leader.id,
-        qr_token: qrToken,
-        qr_code_url: qrCodeUrl || null,
-        created_at: now,
-        updated_at: now,
+      await strapi.db.connection.transaction(async (transaction) => {
+        const inserted = await transaction('tenant_admins')
+          .insert({
+            admin_user_id: adminUserId,
+            admin_email: source.admin_email,
+            tenant_name: tenantAdminName,
+            role: source.role || 'tenant_admin',
+            tenant: tenant.id,
+            admin_leader: source.admin_leader.id,
+            qr_token: qrToken,
+            qr_code_url: qrCodeUrl || null,
+            created_at: now,
+            updated_at: now,
+          })
+          .returning(['id']);
+        const tenantAdminId = Number(inserted[0]?.id || inserted[0]);
+
+        // Existing Strapi relation screens still resolve these legacy link
+        // tables, while custom scope queries use the direct columns above.
+        await transaction('tenant_admins_tenant_links')
+          .insert({ tenant_admin_id: tenantAdminId, tenant_id: tenant.id })
+          .onConflict(['tenant_admin_id', 'tenant_id'])
+          .ignore();
+        await transaction('tenant_admins_admin_leader_links')
+          .insert({ tenant_admin_id: tenantAdminId, admin_leader_id: source.admin_leader.id })
+          .onConflict(['tenant_admin_id', 'admin_leader_id'])
+          .ignore();
       });
       seenAdminUserIds.add(adminUserId);
       seenNames.add(tenantAdminName.toLowerCase());
