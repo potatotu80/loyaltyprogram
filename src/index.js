@@ -1719,6 +1719,16 @@ const getTenantAdminScopeFilter = (tenantContext) => {
     : null;
 };
 
+const getScopedTenantAdminListSort = (value) => {
+  const [requestedField, requestedDirection] = String(value || 'id:DESC').split(':');
+  const allowedFields = new Set(['id', 'tenant_name', 'admin_email']);
+  const field = allowedFields.has(requestedField) ? requestedField : 'id';
+  const direction = String(requestedDirection || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+  // Entity Service accepts an object sort reliably across Strapi 4.x releases.
+  return { [field]: direction };
+};
+
 const buildScopedTenantAdminListResponse = async ({ strapi, tenantContext, requestQuery }) => {
   const scopeFilter = getTenantAdminScopeFilter(tenantContext);
   if (!scopeFilter) {
@@ -1751,36 +1761,47 @@ const buildScopedTenantAdminListResponse = async ({ strapi, tenantContext, reque
   const page = Math.max(1, Number(requestQuery?.page) || 1);
   const pageSize = Math.max(1, Math.min(100, Number(requestQuery?.pageSize) || 10));
   const start = (page - 1) * pageSize;
-  const sort = String(requestQuery?.sort || 'id:asc').toLowerCase();
-  const [results, totalEntries] = await Promise.all([
-    strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
-      filters: mergedFilters,
-      sort,
-      start,
-      limit: pageSize,
-      populate: {
-        tenant: {
-          fields: ['id', 'name', 'slug'],
-        },
-      },
-    }),
-    strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
-      filters: mergedFilters,
-      fields: ['id'],
-      limit: 10000,
-    }),
-  ]);
-  const total = Array.isArray(totalEntries) ? totalEntries.length : 0;
+  const sort = getScopedTenantAdminListSort(requestQuery?.sort);
 
-  return {
-    results,
-    pagination: {
-      page,
-      pageSize,
-      pageCount: Math.ceil(total / pageSize),
-      total,
-    },
-  };
+  try {
+    const [results, totalEntries] = await Promise.all([
+      strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
+        filters: mergedFilters,
+        sort,
+        start,
+        limit: pageSize,
+        populate: {
+          tenant: {
+            fields: ['id', 'name', 'slug'],
+          },
+        },
+      }),
+      strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
+        filters: mergedFilters,
+        fields: ['id'],
+        limit: 10000,
+      }),
+    ]);
+    const total = Array.isArray(totalEntries) ? totalEntries.length : 0;
+
+    return {
+      results,
+      pagination: {
+        page,
+        pageSize,
+        pageCount: Math.ceil(total / pageSize),
+        total,
+      },
+    };
+  } catch (error) {
+    strapi.log.error(
+      `[tenant-admin][scoped-list] failed leaderIds=${JSON.stringify(tenantContext?.adminLeaderIds || [])}` +
+      ` tenantAdminIds=${JSON.stringify(tenantContext?.tenantAdminIds || [])}` +
+      ` tenantIds=${JSON.stringify(tenantContext?.tenantIds || [])}` +
+      ` sort=${JSON.stringify(sort)} error=${error?.stack || error?.message || String(error)}`
+    );
+    throw error;
+  }
 };
 
 const findScopedTenantAdminRecord = async ({ strapi, tenantContext, entityId }) => {
