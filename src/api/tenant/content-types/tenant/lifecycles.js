@@ -3,6 +3,7 @@
 const { generateTenantApiKey, isGeneratedTenantApiKey } = require('../../../../utils/tenant-api-key');
 const {
   buildTenantAdminQrCodeUrl,
+  generateTenantAdminQrToken,
   isGeneratedTenantAdminQrCodeUrl,
 } = require('../../../../utils/app-launch');
 
@@ -290,16 +291,27 @@ const provisionSelectedLeaderTenantAdmins = async (tenantId, requestedLeaderIds 
     }
 
     try {
-      await strapi.entityService.create(TENANT_ADMIN_UID, {
-        data: {
-          admin_user_id: adminUserId,
-          admin_email: source.admin_email,
-          tenant_name: tenantAdminName,
-          role: source.role || 'tenant_admin',
-          // Tenant Admin uses direct relation columns in the production schema.
-          tenant: tenant.id,
-          admin_leader: source.admin_leader.id,
-        },
+      const qrToken = generateTenantAdminQrToken();
+      const qrCodeUrl = buildTenantAdminQrCodeUrl({
+        qrToken,
+        tenantCode: tenant.slug,
+      });
+      const now = new Date();
+
+      // The legacy production table was migrated from link tables to direct
+      // columns. Write those columns explicitly instead of letting Entity
+      // Service discard the relation during its legacy transformation.
+      await strapi.db.connection('tenant_admins').insert({
+        admin_user_id: adminUserId,
+        admin_email: source.admin_email,
+        tenant_name: tenantAdminName,
+        role: source.role || 'tenant_admin',
+        tenant: tenant.id,
+        admin_leader: source.admin_leader.id,
+        qr_token: qrToken,
+        qr_code_url: qrCodeUrl || null,
+        created_at: now,
+        updated_at: now,
       });
       seenAdminUserIds.add(adminUserId);
       seenNames.add(tenantAdminName.toLowerCase());
