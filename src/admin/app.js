@@ -2021,6 +2021,144 @@ const TenantColorPanel = () => {
   );
 };
 
+const TenantAdminAssignmentPanel = () => {
+  const { slug, initialData } = useCMEditViewDataManager();
+  const { get, post } = useFetchClient();
+  const toggleNotification = useNotification();
+  const [capabilities, setCapabilities] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isTenantScreen = slug === TENANT_UID;
+  const tenantId = Number(initialData?.id);
+
+  useEffect(() => {
+    if (!isTenantScreen || !Number.isInteger(tenantId) || tenantId <= 0) {
+      return undefined;
+    }
+
+    let isMounted = true;
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        const [capabilitiesResponse, candidatesResponse] = await Promise.all([
+          get('/tenant-admin/capabilities'),
+          get(`/tenant-admin/eligible-for-tenant/${tenantId}`),
+        ]);
+        if (!isMounted) return;
+
+        const nextCapabilities = capabilitiesResponse?.data?.data || capabilitiesResponse?.data || {};
+        const nextCandidates = candidatesResponse?.data?.data || candidatesResponse?.data || [];
+        setCapabilities(nextCapabilities);
+        setCandidates(Array.isArray(nextCandidates) ? nextCandidates : []);
+        setSelectedIds([]);
+      } catch (_error) {
+        if (!isMounted) return;
+        setCapabilities({ canManageTenantAdmins: false });
+        toggleNotification({
+          type: 'warning',
+          message: 'Unable to load Tenant Admin assignments for this tenant.',
+        });
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [get, isTenantScreen, tenantId, toggleNotification]);
+
+  if (!isTenantScreen || !Number.isInteger(tenantId) || tenantId <= 0 || !capabilities?.canManageTenantAdmins) {
+    return null;
+  }
+
+  const allSelected = candidates.length > 0 && selectedIds.length === candidates.length;
+  const toggleCandidate = (id) => {
+    setSelectedIds((current) => (
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]
+    ));
+  };
+  const toggleAll = () => {
+    setSelectedIds(allSelected ? [] : candidates.map((candidate) => candidate.id));
+  };
+  const assignSelected = async () => {
+    if (!selectedIds.length) {
+      toggleNotification({ type: 'warning', message: 'Select at least one Tenant Admin to assign.' });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Assign ${selectedIds.length} Tenant Admin account${selectedIds.length === 1 ? '' : 's'} to this tenant? Each assignment receives its own QR URL.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsSubmitting(true);
+      const response = await post(`/tenant-admin/assign-to-tenant/${tenantId}`, {
+        tenantAdminIds: selectedIds,
+      });
+      const summary = response?.data?.data || {};
+      const createdCount = Array.isArray(summary.created) ? summary.created.length : 0;
+      const skippedCount = Array.isArray(summary.skipped) ? summary.skipped.length : 0;
+      toggleNotification({
+        type: createdCount ? 'success' : 'warning',
+        message: `Tenant Admin assignments: ${createdCount} created${skippedCount ? `, ${skippedCount} skipped` : ''}.`,
+      });
+      setCandidates((current) => current.filter((candidate) => !selectedIds.includes(candidate.id)));
+      setSelectedIds([]);
+    } catch (_error) {
+      toggleNotification({
+        type: 'warning',
+        message: 'Failed to assign the selected Tenant Admins. No partial result has been hidden; refresh and try again.',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Box background="neutral0" borderColor="neutral200" hasRadius padding={4} shadow="tableShadow">
+      <Flex direction="column" gap={3}>
+        <Typography variant="pi" textColor="neutral600">Assign Tenant Admins</Typography>
+        <Typography variant="omega" textColor="neutral500">
+          Create a separate Tenant Admin mapping and QR URL for selected existing admin accounts.
+        </Typography>
+        {isLoading ? (
+          <Typography variant="omega" textColor="neutral500">Loading eligible Tenant Admins...</Typography>
+        ) : candidates.length ? (
+          <>
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px', color: '#32324d' }}>
+              <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={isSubmitting} />
+              Select all eligible Tenant Admins ({candidates.length})
+            </label>
+            <Box style={{ maxHeight: '260px', overflowY: 'auto', border: '1px solid #dcdce4', borderRadius: '6px', padding: '8px' }}>
+              {candidates.map((candidate) => (
+                <label key={candidate.id} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', padding: '7px 4px', fontSize: '13px', color: '#32324d' }}>
+                  <input type="checkbox" checked={selectedIds.includes(candidate.id)} onChange={() => toggleCandidate(candidate.id)} disabled={isSubmitting} />
+                  <span>
+                    <strong>{candidate.tenantAdminName || candidate.adminEmail}</strong><br />
+                    <span style={{ color: '#666687' }}>{candidate.adminEmail}{candidate.leaderName ? ` · ${candidate.leaderName}` : ''}</span>
+                  </span>
+                </label>
+              ))}
+            </Box>
+            <Button onClick={assignSelected} disabled={!selectedIds.length || isSubmitting} loading={isSubmitting} fullWidth>
+              Assign selected Tenant Admins
+            </Button>
+          </>
+        ) : (
+          <Typography variant="omega" textColor="neutral500">
+            Every eligible Tenant Admin is already assigned, or no eligible Tenant Admin exists in your scope.
+          </Typography>
+        )}
+      </Flex>
+    </Box>
+  );
+};
+
 const TenantKeyPanel = () => {
   const { slug, initialData, modifiedData, onChange } = useCMEditViewDataManager();
   const { post } = useFetchClient();
@@ -3502,6 +3640,11 @@ const bootstrap = (app) => {
   app.injectContentManagerComponent('editView', 'right-links', {
     name: 'tenant-color-panel',
     Component: TenantColorPanel,
+  });
+
+  app.injectContentManagerComponent('editView', 'right-links', {
+    name: 'tenant-admin-assignment-panel',
+    Component: TenantAdminAssignmentPanel,
   });
 
   app.injectContentManagerComponent('editView', 'right-links', {

@@ -3839,6 +3839,172 @@ module.exports = {
         },
         {
           method: 'GET',
+          path: '/tenant-admin/eligible-for-tenant/:tenantId',
+          handler: async (ctx) => {
+            const adminUser = await getAdminRequestUser(ctx, strapi);
+            const tenantId = parsePositiveInt(ctx.params.tenantId);
+            if (!adminUser?.id) {
+              return ctx.unauthorized('Admin authentication is required.');
+            }
+            if (!tenantId) {
+              return ctx.badRequest('Tenant id must be a valid number.');
+            }
+
+            const tenantContext = await getAdminTenantContext(strapi, adminUser);
+            if (!tenantContext.isSuperAdmin && !tenantContext.isAdminLeader) {
+              return ctx.forbidden('Only Super Admins and Admin Leaders can assign Tenant Admins.');
+            }
+            if (!tenantContext.isSuperAdmin && !tenantContext.tenantIds.includes(tenantId)) {
+              return ctx.forbidden('You can only assign Tenant Admins to tenants assigned to you.');
+            }
+
+            const sourceMappings = await strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
+              filters: tenantContext.isSuperAdmin
+                ? {}
+                : { admin_leader: { id: { $in: tenantContext.adminLeaderIds || [] } } },
+              fields: ['id', 'admin_user_id', 'admin_email', 'tenant_name', 'role'],
+              populate: {
+                tenant: { fields: ['id', 'name', 'slug'] },
+                admin_leader: { fields: ['id', 'name'] },
+              },
+              sort: { tenant_name: 'ASC' },
+              limit: 1000,
+            });
+            const assignedMappings = await strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
+              filters: { tenant: { id: { $eq: tenantId } } },
+              fields: ['admin_user_id'],
+              limit: 1000,
+            });
+            const assignedAdminUserIds = new Set(
+              assignedMappings.map((entry) => parsePositiveInt(entry.admin_user_id)).filter(Boolean)
+            );
+            const seenAdminUserIds = new Set();
+            const eligible = sourceMappings
+              .filter((entry) => {
+                const sourceAdminUserId = parsePositiveInt(entry.admin_user_id);
+                if (!sourceAdminUserId || assignedAdminUserIds.has(sourceAdminUserId) || seenAdminUserIds.has(sourceAdminUserId)) {
+                  return false;
+                }
+                seenAdminUserIds.add(sourceAdminUserId);
+                return true;
+              })
+              .map((entry) => ({
+                id: entry.id,
+                adminUserId: entry.admin_user_id,
+                adminEmail: entry.admin_email,
+                tenantAdminName: entry.tenant_name,
+                leaderName: entry.admin_leader?.name || null,
+                sourceTenantName: entry.tenant?.name || entry.tenant?.slug || null,
+              }));
+
+            ctx.body = { data: eligible };
+          },
+          config: {
+            policies: ['admin::isAuthenticatedAdmin'],
+          },
+        },
+        {
+          method: 'POST',
+          path: '/tenant-admin/assign-to-tenant/:tenantId',
+          handler: async (ctx) => {
+            const adminUser = await getAdminRequestUser(ctx, strapi);
+            const tenantId = parsePositiveInt(ctx.params.tenantId);
+            if (!adminUser?.id) {
+              return ctx.unauthorized('Admin authentication is required.');
+            }
+            if (!tenantId) {
+              return ctx.badRequest('Tenant id must be a valid number.');
+            }
+
+            const tenantContext = await getAdminTenantContext(strapi, adminUser);
+            if (!tenantContext.isSuperAdmin && !tenantContext.isAdminLeader) {
+              return ctx.forbidden('Only Super Admins and Admin Leaders can assign Tenant Admins.');
+            }
+            if (!tenantContext.isSuperAdmin && !tenantContext.tenantIds.includes(tenantId)) {
+              return ctx.forbidden('You can only assign Tenant Admins to tenants assigned to you.');
+            }
+
+            const data = getRequestData(ctx) || {};
+            const sourceIds = Array.isArray(data.tenantAdminIds)
+              ? [...new Set(data.tenantAdminIds.map((entry) => parsePositiveInt(entry)).filter(Boolean))]
+              : [];
+            if (!sourceIds.length) {
+              return ctx.badRequest('Select at least one Tenant Admin.');
+            }
+
+            const sourceMappings = await strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
+              filters: {
+                id: { $in: sourceIds },
+                ...(tenantContext.isSuperAdmin
+                  ? {}
+                  : { admin_leader: { id: { $in: tenantContext.adminLeaderIds || [] } } }),
+              },
+              fields: ['id', 'admin_user_id', 'admin_email', 'tenant_name', 'role'],
+              populate: {
+                admin_leader: { fields: ['id'] },
+              },
+              limit: sourceIds.length,
+            });
+            if (sourceMappings.length !== sourceIds.length) {
+              return ctx.forbidden('One or more selected Tenant Admins are outside your scope.');
+            }
+
+            const existingMappings = await strapi.entityService.findMany(APP_TENANT_ADMIN_UID, {
+              filters: { tenant: { id: { $eq: tenantId } } },
+              fields: ['admin_user_id', 'tenant_name'],
+              limit: 1000,
+            });
+            const assignedAdminUserIds = new Set(
+              existingMappings.map((entry) => parsePositiveInt(entry.admin_user_id)).filter(Boolean)
+            );
+            const assignedNames = new Set(
+              existingMappings.map((entry) => String(entry.tenant_name || '').trim().toLowerCase()).filter(Boolean)
+            );
+            const created = [];
+            const skipped = [];
+
+            for (const source of sourceMappings) {
+              const sourceAdminUserId = parsePositiveInt(source.admin_user_id);
+              const tenantAdminName = String(source.tenant_name || '').trim();
+              if (!sourceAdminUserId || assignedAdminUserIds.has(sourceAdminUserId)) {
+                skipped.push({ id: source.id, reason: 'already_assigned' });
+                continue;
+              }
+              if (!tenantAdminName || assignedNames.has(tenantAdminName.toLowerCase())) {
+                skipped.push({ id: source.id, reason: 'duplicate_tenant_admin_name' });
+                continue;
+              }
+
+              const record = await strapi.entityService.create(APP_TENANT_ADMIN_UID, {
+                data: {
+                  admin_user_id: sourceAdminUserId,
+                  admin_email: source.admin_email,
+                  tenant_name: tenantAdminName,
+                  role: source.role || 'tenant_admin',
+                  tenant: { connect: [{ id: tenantId }] },
+                  ...(source.admin_leader?.id
+                    ? { admin_leader: { connect: [{ id: source.admin_leader.id }] } }
+                    : {}),
+                },
+                fields: ['id', 'tenant_name', 'admin_email'],
+              });
+              assignedAdminUserIds.add(sourceAdminUserId);
+              assignedNames.add(tenantAdminName.toLowerCase());
+              created.push(record);
+            }
+
+            strapi.log.info(
+              `[tenant-admin][assign-to-tenant] actor=${adminUser.id} tenant=${tenantId}` +
+              ` requested=${sourceIds.length} created=${created.length} skipped=${skipped.length}`
+            );
+            ctx.body = { data: { created, skipped } };
+          },
+          config: {
+            policies: ['admin::isAuthenticatedAdmin'],
+          },
+        },
+        {
+          method: 'GET',
           path: '/app-user-gallery/:id',
           handler: async (ctx) => {
             const userId = parsePositiveInt(ctx.params.id);
