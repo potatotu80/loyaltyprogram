@@ -296,12 +296,9 @@ const provisionSelectedLeaderTenantAdmins = async (tenantId, requestedLeaderIds 
           admin_email: source.admin_email,
           tenant_name: tenantAdminName,
           role: source.role || 'tenant_admin',
-          tenant: {
-            connect: [{ id: tenant.id }],
-          },
-          admin_leader: {
-            connect: [{ id: source.admin_leader.id }],
-          },
+          // Tenant Admin uses direct relation columns in the production schema.
+          tenant: tenant.id,
+          admin_leader: source.admin_leader.id,
         },
       });
       seenAdminUserIds.add(adminUserId);

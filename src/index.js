@@ -3801,14 +3801,10 @@ module.exports = {
                 const created = await strapi.entityService.create(APP_TENANT_ADMIN_UID, {
                   data: {
                     ...baseData,
-                    tenant: {
-                      connect: [{ id: tenantId }],
-                    },
+                    tenant: tenantId,
                     ...(adminLeaderId
                       ? {
-                          admin_leader: {
-                            connect: [{ id: adminLeaderId }],
-                          },
+                          admin_leader: adminLeaderId,
                         }
                       : {}),
                   },
@@ -3981,9 +3977,9 @@ module.exports = {
                   admin_email: source.admin_email,
                   tenant_name: tenantAdminName,
                   role: source.role || 'tenant_admin',
-                  tenant: { connect: [{ id: tenantId }] },
+                  tenant: tenantId,
                   ...(source.admin_leader?.id
-                    ? { admin_leader: { connect: [{ id: source.admin_leader.id }] } }
+                    ? { admin_leader: source.admin_leader.id }
                     : {}),
                 },
                 fields: ['id', 'tenant_name', 'admin_email'],
