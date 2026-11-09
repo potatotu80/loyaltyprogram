@@ -207,6 +207,96 @@ const syncAndroidApkUrl = async (tenantId) => {
   });
 };
 
+const provisionSelectedLeaderTenantAdmins = async (tenantId) => {
+  const strapi = getTenantStrapi();
+  if (!strapi || !tenantId) {
+    return;
+  }
+
+  const tenant = await strapi.entityService.findOne(TENANT_UID, tenantId, {
+    fields: ['id', 'name', 'slug'],
+    populate: {
+      admin_leaders: {
+        fields: ['id', 'name'],
+      },
+    },
+  });
+  const leaderIds = [...new Set(
+    (tenant?.admin_leaders || []).map((leader) => Number(leader?.id)).filter(Number.isInteger)
+  )];
+  if (!leaderIds.length) {
+    return;
+  }
+
+  const sourceMappings = await strapi.entityService.findMany(TENANT_ADMIN_UID, {
+    filters: {
+      admin_leader: {
+        id: {
+          $in: leaderIds,
+        },
+      },
+    },
+    fields: ['id', 'admin_user_id', 'admin_email', 'tenant_name', 'role'],
+    populate: {
+      admin_leader: {
+        fields: ['id'],
+      },
+    },
+    limit: 1000,
+  });
+
+  const seenAdminUserIds = new Set();
+  const seenNames = new Set();
+  let createdCount = 0;
+  let skippedCount = 0;
+
+  for (const source of sourceMappings) {
+    const adminUserId = Number(source.admin_user_id);
+    const tenantAdminName = String(source.tenant_name || '').trim();
+    if (
+      !Number.isInteger(adminUserId) ||
+      adminUserId <= 0 ||
+      !tenantAdminName ||
+      seenAdminUserIds.has(adminUserId) ||
+      seenNames.has(tenantAdminName.toLowerCase())
+    ) {
+      skippedCount += 1;
+      continue;
+    }
+
+    try {
+      await strapi.entityService.create(TENANT_ADMIN_UID, {
+        data: {
+          admin_user_id: adminUserId,
+          admin_email: source.admin_email,
+          tenant_name: tenantAdminName,
+          role: source.role || 'tenant_admin',
+          tenant: {
+            connect: [{ id: tenant.id }],
+          },
+          admin_leader: {
+            connect: [{ id: source.admin_leader.id }],
+          },
+        },
+      });
+      seenAdminUserIds.add(adminUserId);
+      seenNames.add(tenantAdminName.toLowerCase());
+      createdCount += 1;
+    } catch (error) {
+      skippedCount += 1;
+      strapi.log.warn(
+        `[tenant][tenant-admin-provision] skipped source=${source.id} tenant=${tenant.id}` +
+        ` reason=${error?.message || String(error)}`
+      );
+    }
+  }
+
+  strapi.log.info(
+    `[tenant][tenant-admin-provision] tenant=${tenant.id} leaders=${leaderIds.join(',')}` +
+    ` created=${createdCount} skipped=${skippedCount}`
+  );
+};
+
 const shouldReplaceGeneratedQrCodeUrl = (value, previousSlug) => {
   const normalizedValue = String(value || '').trim();
   if (!normalizedValue) {
@@ -308,7 +398,9 @@ module.exports = {
   },
 
   async afterCreate(event) {
-    await syncAndroidApkUrl(event.result?.id);
+    const tenantId = event.result?.id;
+    await syncAndroidApkUrl(tenantId);
+    await provisionSelectedLeaderTenantAdmins(tenantId);
   },
 
   async afterUpdate(event) {
