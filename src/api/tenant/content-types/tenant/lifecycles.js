@@ -6,6 +6,10 @@ const {
   generateTenantAdminQrToken,
   isGeneratedTenantAdminQrCodeUrl,
 } = require('../../../../utils/app-launch');
+const {
+  addTenantAdminDirectRelations,
+  getTenantAdminDirectRelationColumns,
+} = require('../../../../utils/tenant-admin-storage');
 
 const MANAGED_API_KEY_PLACEHOLDER = 'Auto-generated on save';
 const TENANT_UID = 'api::tenant.tenant';
@@ -275,6 +279,7 @@ const provisionSelectedLeaderTenantAdmins = async (tenantId, requestedLeaderIds 
   );
   let createdCount = 0;
   let skippedCount = 0;
+  const directRelationColumns = await getTenantAdminDirectRelationColumns(strapi.db.connection);
 
   for (const source of sourceMappings) {
     const adminUserId = Number(source.admin_user_id);
@@ -303,18 +308,21 @@ const provisionSelectedLeaderTenantAdmins = async (tenantId, requestedLeaderIds 
       // Service discard the relation during its legacy transformation.
       await strapi.db.connection.transaction(async (transaction) => {
         const inserted = await transaction('tenant_admins')
-          .insert({
-            admin_user_id: adminUserId,
-            admin_email: source.admin_email,
-            tenant_name: tenantAdminName,
-            role: source.role || 'tenant_admin',
-            tenant: tenant.id,
-            admin_leader: source.admin_leader.id,
-            qr_token: qrToken,
-            qr_code_url: qrCodeUrl || null,
-            created_at: now,
-            updated_at: now,
-          })
+          .insert(addTenantAdminDirectRelations({
+            data: {
+              admin_user_id: adminUserId,
+              admin_email: source.admin_email,
+              tenant_name: tenantAdminName,
+              role: source.role || 'tenant_admin',
+              qr_token: qrToken,
+              qr_code_url: qrCodeUrl || null,
+              created_at: now,
+              updated_at: now,
+            },
+            tenantId: tenant.id,
+            adminLeaderId: source.admin_leader.id,
+            directRelationColumns,
+          }))
           .returning(['id']);
         const tenantAdminId = Number(inserted[0]?.id || inserted[0]);
 

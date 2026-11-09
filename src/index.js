@@ -39,6 +39,10 @@ const {
   removeAdminAccountSecurity,
   requirePasswordChange,
 } = require('./utils/admin-account-security');
+const {
+  addTenantAdminDirectRelations,
+  getTenantAdminDirectRelationColumns,
+} = require('./utils/tenant-admin-storage');
 const TENANT_ADMIN_BULK_SENTINEL = '__tenant_admin_bulk__:';
 const SHARED_APP_UID = 'api::shared-app.shared-app';
 
@@ -3808,6 +3812,7 @@ module.exports = {
             const tenantsById = new Map(
               selectedTenants.map((tenant) => [parsePositiveInt(tenant.id), tenant])
             );
+            const directRelationColumns = await getTenantAdminDirectRelationColumns(strapi.db.connection);
             const createdRecords = [];
             try {
               if (createdAdminUserId) {
@@ -3833,15 +3838,18 @@ module.exports = {
                 // Write both representations in one transaction.
                 const created = await strapi.db.connection.transaction(async (transaction) => {
                   const inserted = await transaction('tenant_admins')
-                    .insert({
-                      ...baseData,
-                      tenant: tenantId,
-                      admin_leader: adminLeaderId || null,
-                      qr_token: qrToken,
-                      qr_code_url: qrCodeUrl || null,
-                      created_at: now,
-                      updated_at: now,
-                    })
+                    .insert(addTenantAdminDirectRelations({
+                      data: {
+                        ...baseData,
+                        qr_token: qrToken,
+                        qr_code_url: qrCodeUrl || null,
+                        created_at: now,
+                        updated_at: now,
+                      },
+                      tenantId,
+                      adminLeaderId,
+                      directRelationColumns,
+                    }))
                     .returning(['id']);
                   const tenantAdminId = Number(inserted[0]?.id || inserted[0]);
 
