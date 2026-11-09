@@ -2805,7 +2805,6 @@ const config = {
   locales: [],
 };
 
-const SETTINGS_USERS_PATH = '/admin/settings/users';
 const APP_USERS_COLLECTION_PATH = '/admin/content-manager/collectionType/api::app-user.app-user';
 const COLLECTION_LIST_STATE_KEY_PREFIX = 'contentManagerListState:';
 
@@ -2929,10 +2928,6 @@ const syncDescendingIdSort = (pathPrefix) => {
   }
 };
 
-const syncSettingsUsersQuery = () => {
-  syncDescendingIdSort(SETTINGS_USERS_PATH);
-};
-
 const syncAppUsersQuery = () => {
   syncDescendingIdSort(APP_USERS_COLLECTION_PATH);
 };
@@ -2940,28 +2935,6 @@ const syncAppUsersQuery = () => {
 const syncCollectionListState = () => {
   persistCurrentCollectionListUrl();
   restoreStoredCollectionBackLink();
-};
-
-const installSettingsUsersSortGuard = () => {
-  if (typeof window === 'undefined' || window.__settingsUsersSortGuardInstalled) {
-    return;
-  }
-
-  window.__settingsUsersSortGuardInstalled = true;
-  syncSettingsUsersQuery();
-
-  const wrapHistoryMethod = (methodName) => {
-    const original = window.history[methodName];
-    window.history[methodName] = function wrappedHistoryMethod(...args) {
-      const result = original.apply(this, args);
-      window.setTimeout(syncSettingsUsersQuery, 0);
-      return result;
-    };
-  };
-
-  wrapHistoryMethod('pushState');
-  wrapHistoryMethod('replaceState');
-  window.addEventListener('popstate', syncSettingsUsersQuery);
 };
 
 const installAppUsersSortGuard = () => {
@@ -3611,7 +3584,6 @@ const installTenantAdminProfilePasswordGuard = () => {
 };
 
 const bootstrap = (app) => {
-  installSettingsUsersSortGuard();
   installAppUsersSortGuard();
   installTenantAdminSettingsGuard();
   installTenantAdminProfilePasswordGuard();
