@@ -2845,6 +2845,81 @@ module.exports = {
         return;
       }
 
+      if (ctx.method === 'GET' && relationRequest?.targetField === 'admin_leader') {
+        const { model, entityId, mode } = relationRequest;
+        if (model !== APP_TENANT_ADMIN_UID) {
+          return next();
+        }
+
+        const tenantContext = await getAdminTenantContext(strapi, adminUser);
+        if (!tenantContext.isSuperAdmin && !tenantContext.tenantIds.length) {
+          return ctx.forbidden('This admin user is not assigned to a tenant.');
+        }
+
+        if (mode === 'available') {
+          const leaders = tenantContext.isSuperAdmin
+            ? await strapi.entityService.findMany(APP_ADMIN_LEADER_UID, {
+                fields: ['id', 'name'],
+                sort: { name: 'ASC' },
+                limit: 100,
+              })
+            : await strapi.entityService.findMany(APP_ADMIN_LEADER_UID, {
+                filters: { id: { $in: tenantContext.adminLeaderIds || [] } },
+                fields: ['id', 'name'],
+                sort: { name: 'ASC' },
+                limit: 100,
+              });
+
+          ctx.body = {
+            results: leaders.map((leader) => ({
+              id: leader.id,
+              name: leader.name || `Leader ${leader.id}`,
+            })),
+            pagination: {
+              page: 1,
+              pageSize: leaders.length || 10,
+              pageCount: 1,
+              total: leaders.length,
+            },
+          };
+          return;
+        }
+
+        if (!entityId) {
+          return ctx.badRequest('Entry id must be a valid number.');
+        }
+
+        if (!tenantContext.isSuperAdmin) {
+          const scopedEntity = await findScopedTenantAdminRecord({
+            strapi,
+            tenantContext,
+            entityId,
+          });
+          if (!scopedEntity) {
+            return ctx.forbidden('This Tenant Admin record is outside your scope.');
+          }
+        }
+
+        const tenantAdmin = await strapi.entityService.findOne(APP_TENANT_ADMIN_UID, entityId, {
+          fields: ['id'],
+          populate: {
+            admin_leader: {
+              fields: ['id', 'name'],
+            },
+          },
+        });
+        const leader = tenantAdmin?.admin_leader || null;
+        ctx.body = {
+          data: leader
+            ? {
+                id: leader.id,
+                name: leader.name || `Leader ${leader.id}`,
+              }
+            : null,
+        };
+        return;
+      }
+
       const slug = getContentManagerSlug(ctx.request.path || '');
       if (!slug) {
         return next();
