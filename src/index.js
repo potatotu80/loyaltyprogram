@@ -2779,7 +2779,11 @@ module.exports = {
       const relationRequest = getContentManagerRelationParams(ctx.request.path || '');
       if (ctx.method === 'GET' && relationRequest?.targetField === 'tenant') {
         const { model, entityId, mode } = relationRequest;
-        const supportedRelationModel = model === APP_USER_UID || model === CONTACT_UID;
+        const supportedRelationModel = (
+          model === APP_USER_UID ||
+          model === CONTACT_UID ||
+          model === APP_TENANT_ADMIN_UID
+        );
         if (!supportedRelationModel) {
           return next();
         }
