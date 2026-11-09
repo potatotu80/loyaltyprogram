@@ -207,7 +207,11 @@ const syncAndroidApkUrl = async (tenantId) => {
   });
 };
 
-const provisionSelectedLeaderTenantAdmins = async (tenantId) => {
+const getRelationIds = (records) => [...new Set(
+  (records || []).map((record) => Number(record?.id)).filter(Number.isInteger)
+)];
+
+const provisionSelectedLeaderTenantAdmins = async (tenantId, requestedLeaderIds = null) => {
   const strapi = getTenantStrapi();
   if (!strapi || !tenantId) {
     return;
@@ -221,9 +225,13 @@ const provisionSelectedLeaderTenantAdmins = async (tenantId) => {
       },
     },
   });
-  const leaderIds = [...new Set(
-    (tenant?.admin_leaders || []).map((leader) => Number(leader?.id)).filter(Number.isInteger)
-  )];
+  const linkedLeaderIds = getRelationIds(tenant?.admin_leaders);
+  const requestedLeaderIdSet = Array.isArray(requestedLeaderIds)
+    ? new Set(requestedLeaderIds.map((id) => Number(id)).filter(Number.isInteger))
+    : null;
+  const leaderIds = requestedLeaderIdSet
+    ? linkedLeaderIds.filter((leaderId) => requestedLeaderIdSet.has(leaderId))
+    : linkedLeaderIds;
   if (!leaderIds.length) {
     return;
   }
@@ -245,8 +253,25 @@ const provisionSelectedLeaderTenantAdmins = async (tenantId) => {
     limit: 1000,
   });
 
-  const seenAdminUserIds = new Set();
-  const seenNames = new Set();
+  const existingMappings = await strapi.entityService.findMany(TENANT_ADMIN_UID, {
+    filters: {
+      tenant: {
+        id: {
+          $eq: tenant.id,
+        },
+      },
+    },
+    fields: ['admin_user_id', 'tenant_name'],
+    limit: 1000,
+  });
+  const seenAdminUserIds = new Set(
+    existingMappings.map((mapping) => Number(mapping.admin_user_id)).filter(Number.isInteger)
+  );
+  const seenNames = new Set(
+    existingMappings
+      .map((mapping) => String(mapping.tenant_name || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
   let createdCount = 0;
   let skippedCount = 0;
 
@@ -363,6 +388,11 @@ const ensureTenantApiKeyOnUpdate = async (event) => {
 
   const existingTenant = await strapi.entityService.findOne(TENANT_UID, tenantId, {
     fields: TENANT_FIELDS,
+    populate: {
+      admin_leaders: {
+        fields: ['id'],
+      },
+    },
   });
   if (!existingTenant) {
     return;
@@ -370,6 +400,7 @@ const ensureTenantApiKeyOnUpdate = async (event) => {
 
   event.state = event.state || {};
   event.state.existingTenant = existingTenant;
+  event.state.existingAdminLeaderIds = getRelationIds(existingTenant.admin_leaders);
 
   const nextSlug = String(data.slug || existingTenant.slug || data.name || '').trim();
   if (!nextSlug) {
@@ -410,5 +441,23 @@ module.exports = {
       previousSlug: String(event.state?.existingTenant?.slug || '').trim(),
       tenantId,
     });
+
+    const strapi = getTenantStrapi();
+    const updatedTenant = strapi && tenantId
+      ? await strapi.entityService.findOne(TENANT_UID, tenantId, {
+          fields: ['id'],
+          populate: {
+            admin_leaders: {
+              fields: ['id'],
+            },
+          },
+        })
+      : null;
+    const previousLeaderIds = new Set(event.state?.existingAdminLeaderIds || []);
+    const newlyLinkedLeaderIds = getRelationIds(updatedTenant?.admin_leaders)
+      .filter((leaderId) => !previousLeaderIds.has(leaderId));
+    if (newlyLinkedLeaderIds.length) {
+      await provisionSelectedLeaderTenantAdmins(tenantId, newlyLinkedLeaderIds);
+    }
   },
 };
