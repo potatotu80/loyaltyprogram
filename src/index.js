@@ -15,6 +15,7 @@ const {
 } = require('./utils/object-storage');
 const {
   buildTenantAdminQrCodeUrl,
+  generateTenantAdminQrToken,
   getSharedAndroidApplicationId,
   getSharedDeepLinkScheme,
 } = require('./utils/app-launch');
@@ -3791,6 +3792,22 @@ module.exports = {
               qr_code_url: null,
             };
 
+            const selectedTenants = await strapi.entityService.findMany(APP_TENANT_UID, {
+              filters: {
+                id: {
+                  $in: tenantIds,
+                },
+              },
+              fields: ['id', 'name', 'slug'],
+              limit: tenantIds.length,
+            });
+            if (selectedTenants.length !== tenantIds.length) {
+              return ctx.badRequest('One or more selected tenants no longer exist.');
+            }
+
+            const tenantsById = new Map(
+              selectedTenants.map((tenant) => [parsePositiveInt(tenant.id), tenant])
+            );
             const createdRecords = [];
             try {
               if (createdAdminUserId) {
@@ -3798,21 +3815,55 @@ module.exports = {
               }
 
               for (const tenantId of tenantIds) {
-                const created = await strapi.entityService.create(APP_TENANT_ADMIN_UID, {
-                  data: {
+                const tenant = tenantsById.get(tenantId);
+                const tenantCode = String(tenant?.slug || '').trim();
+                if (!tenantCode) {
+                  throw new Error(`Tenant ${tenantId} does not have a slug for its QR URL.`);
+                }
+
+                const qrToken = generateTenantAdminQrToken();
+                const qrCodeUrl = buildTenantAdminQrCodeUrl({
+                  qrToken,
+                  tenantCode,
+                });
+                const now = new Date();
+
+                // This database retains direct relation columns from an older
+                // migration while Strapi still reads the corresponding link tables.
+                // Write both representations in one transaction.
+                const created = await strapi.db.connection.transaction(async (transaction) => {
+                  const inserted = await transaction('tenant_admins')
+                    .insert({
+                      ...baseData,
+                      tenant: tenantId,
+                      admin_leader: adminLeaderId || null,
+                      qr_token: qrToken,
+                      qr_code_url: qrCodeUrl || null,
+                      created_at: now,
+                      updated_at: now,
+                    })
+                    .returning(['id']);
+                  const tenantAdminId = Number(inserted[0]?.id || inserted[0]);
+
+                  await transaction('tenant_admins_tenant_links')
+                    .insert({ tenant_admin_id: tenantAdminId, tenant_id: tenantId })
+                    .onConflict(['tenant_admin_id', 'tenant_id'])
+                    .ignore();
+
+                  if (adminLeaderId) {
+                    await transaction('tenant_admins_admin_leader_links')
+                      .insert({ tenant_admin_id: tenantAdminId, admin_leader_id: adminLeaderId })
+                      .onConflict(['tenant_admin_id', 'admin_leader_id'])
+                      .ignore();
+                  }
+
+                  return {
+                    id: tenantAdminId,
                     ...baseData,
-                    tenant: tenantId,
-                    ...(adminLeaderId
-                      ? {
-                          admin_leader: adminLeaderId,
-                        }
-                      : {}),
-                  },
-                  populate: {
-                    tenant: {
-                      fields: ['id', 'name', 'slug'],
-                    },
-                  },
+                    tenant: tenant,
+                    qr_token: qrToken,
+                    qr_code_url: qrCodeUrl || null,
+                  };
                 });
                 createdRecords.push(created);
               }
